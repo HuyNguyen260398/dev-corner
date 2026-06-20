@@ -70,6 +70,45 @@ exactly what a user would install, so it's the honest verification.
 | **IndexedDB** (Dexie data) | Any DevTools → **Application** tab → IndexedDB | Posts, sources |
 | **`chrome.storage.local`** (queues/progress) | DevTools → **Application** → Storage → Extension storage | Crawl queue & progress state |
 
+## Inspecting the local database (IndexedDB)
+
+All persisted data lives in a Dexie/IndexedDB database named **`dev-corner`**
+(schema in `src/lib/db.ts`), under the extension's own origin
+(`chrome-extension://<id>`). The service worker writes it; the popup reads it
+live. Both contexts share the one database.
+
+### Browse it in DevTools (no code)
+
+1. Open the popup, then **right-click inside it → Inspect** (DevTools for the
+   popup's context, which shares the extension origin). The **service worker**
+   DevTools works too — same origin, same data.
+2. Go to the **Application** tab → **Storage → IndexedDB → dev-corner**.
+3. Expand and click **`sources`** or **`posts`** to see each row (`id`, `url`,
+   `title`, `addedAt`, …).
+4. Click the **↻ refresh** icon in that panel after saving — IndexedDB views
+   don't auto-update.
+
+### Query it from the console
+
+`db` is not exposed on `globalThis`, and the built module path is content-hashed,
+so the most convenient route is to add a dev-only handle. In `src/lib/db.ts`:
+
+```ts
+// dev-only: lets you run `await db.sources.toArray()` in the console.
+if (import.meta.env.DEV) (globalThis as Record<string, unknown>).db = db
+```
+
+Then, in the popup or service-worker console (`pnpm dev` build):
+
+```js
+await db.sources.toArray()                 // all saved sources
+await db.sources.get({ url: location.href })
+await db.posts.where('crawlDay').equals('2026-06-20').toArray()
+await db.sources.count()
+```
+
+The guard is stripped from `pnpm build` output, so it never ships to users.
+
 ## Useful service-worker console snippets
 
 Open the **service worker** DevTools (see table above), then:
