@@ -76,7 +76,7 @@ Example: `TASK-009: implement seeded selection algorithm with 4 N-branches`. Do 
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-001 | Initialize the project with pnpm: create `package.json` with `"packageManager": "pnpm@<version>"`, scripts `dev`, `build`, `test`, `test:watch`, `typecheck`, `lint`. Add `pnpm-lock.yaml` via `pnpm install`. | | |
+| TASK-001 | Initialize the project with pnpm: create `package.json` with `"packageManager": "pnpm@<version>"`, scripts `dev`, `build`, `test`, `test:watch`, `typecheck`, `lint`. Add `pnpm-lock.yaml` via `pnpm install`. | ✅ | 2026-06-20 |
 | TASK-002 | Add toolchain deps: `vite`, `@crxjs/vite-plugin`, `typescript`, `react`, `react-dom`, `dexie`, `dexie-react-hooks`, `@types/chrome`, `vitest`, `@testing-library/react`, `jsdom` (or `happy-dom`). | | |
 | TASK-003 | Create `tsconfig.json` (strict: true, noImplicitAny, exactOptionalPropertyTypes) and `vite.config.ts` wiring `@crxjs/vite-plugin` to `manifest.config.ts`. | | |
 | TASK-004 | Create `vitest.config.ts` with `environment: 'node'` for lib tests and `jsdom` for popup tests, `globals: true`, coverage via `@vitest/coverage-v8`. | | |
