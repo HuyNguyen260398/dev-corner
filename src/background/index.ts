@@ -1,7 +1,8 @@
 // Service worker entry point — the only context that crawls (per CLAUDE.md).
-// Crawling and scheduling (chrome.alarms) arrive in later phases. Here we register
-// the "Save to dev-corner" context menu (F12) and save through the shared, pure
-// src/lib/sources path. No in-memory state is relied upon between events (CON-002).
+// Here we register the "Save to dev-corner" context menu (F12), save through the
+// shared src/lib/sources path, and trigger background-only crawling. No in-memory
+// state is relied upon between events (CON-002).
+import { crawlAll, crawlSourceById } from './crawl'
 import { addSource, deleteSource } from '../lib/sources'
 import type { WorkerRequest, WorkerResponse } from '../lib/types'
 
@@ -25,6 +26,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (!url) return
   const title = info.linkUrl ? undefined : tab?.title
   void addSource(url, title)
+    .then((sourceId) => crawlSourceById(sourceId))
+    .catch(() => undefined)
 })
 
 function errorMessage(e: unknown): string {
@@ -33,7 +36,7 @@ function errorMessage(e: unknown): string {
 
 // Typed message boundary (GUD-003): the popup sends WorkerRequest and gets back a
 // WorkerResponse. Handlers are async, so we return true to keep the channel open
-// and call sendResponse later. CRAWL_* requests are wired up in later phases.
+// and call sendResponse later.
 chrome.runtime.onMessage.addListener(
   (message: WorkerRequest, _sender, sendResponse: (response: WorkerResponse) => void) => {
     switch (message.type) {
@@ -47,8 +50,28 @@ chrome.runtime.onMessage.addListener(
           .then(() => sendResponse({ ok: true }))
           .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
         return true
-      default:
-        return false
+      case 'CRAWL_SOURCE':
+        crawlSourceById(message.sourceId)
+          .then((result) =>
+            sendResponse(
+              result.ok
+                ? { ok: true, sourceId: result.sourceId }
+                : { ok: false, error: result.error ?? 'Crawl failed' },
+            ),
+          )
+          .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
+        return true
+      case 'CRAWL_ALL':
+        crawlAll()
+          .then(() => sendResponse({ ok: true }))
+          .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
+        return true
     }
+
+    return assertNever(message)
   },
 )
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled worker request: ${JSON.stringify(value)}`)
+}
