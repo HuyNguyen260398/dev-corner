@@ -83,7 +83,7 @@ Example: `TASK-009: implement seeded selection algorithm with 4 N-branches`. Do 
 | TASK-005 | Author `manifest.config.ts`: MV3, `permissions: [storage, alarms, contextMenus, notifications]`, `host_permissions: ['<all_urls>']`, background service worker (`type: module`), popup `action`. | ✅ | 2026-06-20 |
 | TASK-006 | Create `src/lib/types.ts`: `Source`, `Post`, `Settings` interfaces (per §5) and the discriminated-union `Message` type covering `CRAWL_ALL`, `CRAWL_SOURCE`, `SAVE_SOURCE`, `DELETE_SOURCE` request/response shapes. | ✅ | 2026-06-20 |
 | TASK-007 | Create `src/lib/db.ts`: Dexie subclass `DevCornerDB` with stores `sources: '++id, &url, feedUrl, lastCrawledAt'` and `posts: '++id, sourceId, &postUrl, crawlDay, publishedAt'`; export a singleton `db`. | ✅ | 2026-06-20 |
-| TASK-008 | Add placeholder entry points `src/background/index.ts`, `src/popup/main.tsx`, `src/popup/App.tsx`, and a placeholder thumbnail asset under `public/`. | | |
+| TASK-008 | Add placeholder entry points `src/background/index.ts`, `src/popup/main.tsx`, `src/popup/App.tsx`, and a placeholder thumbnail asset under `public/`. Also added `src/popup/index.html` (required popup entry for crxjs). | ✅ | 2026-06-20 |
 
 ### Implementation Phase 2
 
