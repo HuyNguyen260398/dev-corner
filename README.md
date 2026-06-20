@@ -59,6 +59,7 @@ flagged as an open question — see the development plan.)
 dev-corner/
 ├── docs/
 │   ├── DEVELOPMENT_PLAN.md         full spec, milestones, risks
+│   ├── LOCAL_TESTING.md            local run / load / inspect guide
 │   └── adr/
 │       ├── ADR-001-extraction-strategy.md
 │       └── ADR-002-permissions-model.md
@@ -84,6 +85,10 @@ pnpm build           # production build → dist/
 
 Load it in Chrome: open `chrome://extensions`, enable **Developer mode**, click
 **Load unpacked**, and select the `dist/` folder.
+
+For the full local workflow — dev vs. production builds, where to inspect the
+service worker and IndexedDB, MV3 gotchas, and console snippets — see
+[`docs/LOCAL_TESTING.md`](docs/LOCAL_TESTING.md).
 
 ## Status
 
