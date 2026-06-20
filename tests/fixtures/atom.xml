@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+  <title>Example Atom Blog</title>
+  <link href="https://atom.example.com/" />
+  <updated>2026-06-20T10:00:00Z</updated>
+  <entry>
+    <title>Atom Post One</title>
+    <link rel="alternate" href="https://atom.example.com/a1" />
+    <updated>2026-06-18T08:00:00Z</updated>
+    <summary>First atom summary.</summary>
+    <media:thumbnail url="https://atom.example.com/thumb-a1.jpg" />
+  </entry>
+  <entry>
+    <title>Atom Post Two</title>
+    <link rel="alternate" href="https://atom.example.com/a2" />
+    <published>2026-06-19T08:00:00Z</published>
+    <content type="html"><![CDATA[<p>Second atom body with <img src="https://atom.example.com/content-a2.png"/>.</p>]]></content>
+  </entry>
+  <entry>
+    <title>Atom Post Three</title>
+    <link href="https://atom.example.com/a3" />
+    <updated>2026-06-20T08:00:00Z</updated>
+    <summary>Third atom summary.</summary>
+  </entry>
+</feed>
