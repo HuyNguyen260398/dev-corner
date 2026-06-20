@@ -1,0 +1,56 @@
+// Shared, side-effect-free types. No `chrome.*` access here (GUD-001).
+// All cross-context messages use the discriminated unions below (GUD-003).
+
+/** A user-saved blog/source page. */
+export interface Source {
+  id?: number
+  /** The page the user saved. Unique. */
+  url: string
+  /** Best-effort site title. */
+  title: string
+  /** Resolved RSS/Atom feed, cached after discovery. */
+  feedUrl?: string
+  faviconUrl?: string
+  addedAt: number
+  lastCrawledAt?: number
+  /** Last crawl failure, surfaced in the UI. */
+  lastError?: string
+}
+
+/** A post extracted from a source (F5 fields). */
+export interface Post {
+  id?: number
+  sourceId: number
+  /** F5: source original link. */
+  sourceUrl: string
+  /** F5 */
+  title: string
+  /** F5 */
+  summary: string
+  /** F5 */
+  thumbnail?: string
+  /** F5: post original link. Unique per source. */
+  postUrl: string
+  publishedAt?: number
+  crawledAt: number
+  /** 'YYYY-MM-DD' local — scopes "today's" list. */
+  crawlDay: string
+}
+
+/** Persisted user settings (chrome.storage.local). */
+export interface Settings {
+  /** F7: crawl daily at 07:00 local time. */
+  enableDailyCron: boolean
+}
+
+/** Requests sent from the popup / context menu to the service worker. */
+export type WorkerRequest =
+  | { type: 'CRAWL_ALL' }
+  | { type: 'CRAWL_SOURCE'; sourceId: number }
+  | { type: 'SAVE_SOURCE'; url: string; title?: string }
+  | { type: 'DELETE_SOURCE'; sourceId: number }
+
+/** Responses returned by the service worker, discriminated on `ok`. */
+export type WorkerResponse =
+  | { ok: true; sourceId?: number }
+  | { ok: false; error: string }
