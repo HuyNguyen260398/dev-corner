@@ -82,7 +82,7 @@ Example: `TASK-009: implement seeded selection algorithm with 4 N-branches`. Do 
 | TASK-004 | Create `vitest.config.ts` with `environment: 'node'` for lib tests and `jsdom` for popup tests, `globals: true`, coverage via `@vitest/coverage-v8`. Deviation: jsdom used project-wide because lib parsers depend on `DOMParser` (absent in Node). | ✅ | 2026-06-20 |
 | TASK-005 | Author `manifest.config.ts`: MV3, `permissions: [storage, alarms, contextMenus, notifications]`, `host_permissions: ['<all_urls>']`, background service worker (`type: module`), popup `action`. | ✅ | 2026-06-20 |
 | TASK-006 | Create `src/lib/types.ts`: `Source`, `Post`, `Settings` interfaces (per §5) and the discriminated-union `Message` type covering `CRAWL_ALL`, `CRAWL_SOURCE`, `SAVE_SOURCE`, `DELETE_SOURCE` request/response shapes. | ✅ | 2026-06-20 |
-| TASK-007 | Create `src/lib/db.ts`: Dexie subclass `DevCornerDB` with stores `sources: '++id, &url, feedUrl, lastCrawledAt'` and `posts: '++id, sourceId, &postUrl, crawlDay, publishedAt'`; export a singleton `db`. | | |
+| TASK-007 | Create `src/lib/db.ts`: Dexie subclass `DevCornerDB` with stores `sources: '++id, &url, feedUrl, lastCrawledAt'` and `posts: '++id, sourceId, &postUrl, crawlDay, publishedAt'`; export a singleton `db`. | ✅ | 2026-06-20 |
 | TASK-008 | Add placeholder entry points `src/background/index.ts`, `src/popup/main.tsx`, `src/popup/App.tsx`, and a placeholder thumbnail asset under `public/`. | | |
 
 ### Implementation Phase 2
