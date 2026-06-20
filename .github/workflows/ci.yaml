@@ -1,0 +1,54 @@
+name: CI
+
+# Runs on every pull request (opened, updated with new commits, or reopened).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Cancel superseded runs when a PR is updated with new commits.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: CI only needs to read the repository.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are pinned to majors whose runtime is Node 24, per the Node 20
+      # deprecation on GitHub Actions runners. pnpm is provided by Corepack
+      # (not pnpm/action-setup), and dependency caching uses setup-node's
+      # built-in pnpm cache instead of actions/cache.
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Corepack activates the pnpm version pinned in package.json#packageManager.
+      # Enabled before setup-node so `cache: pnpm` can resolve the pnpm store.
+      - name: Enable Corepack
+        run: corepack enable
+
+      # node-version-file reads .nvmrc (Node 24). pnpm 11 requires Node >= 22.13.
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
