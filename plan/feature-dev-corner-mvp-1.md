@@ -78,7 +78,7 @@ Example: `TASK-009: implement seeded selection algorithm with 4 N-branches`. Do 
 |------|-------------|-----------|------|
 | TASK-001 | Initialize the project with pnpm: create `package.json` with `"packageManager": "pnpm@<version>"`, scripts `dev`, `build`, `test`, `test:watch`, `typecheck`, `lint`. Add `pnpm-lock.yaml` via `pnpm install`. | ✅ | 2026-06-20 |
 | TASK-002 | Add toolchain deps: `vite`, `@crxjs/vite-plugin`, `typescript`, `react`, `react-dom`, `dexie`, `dexie-react-hooks`, `@types/chrome`, `vitest`, `@testing-library/react`, `jsdom` (or `happy-dom`). Also added required peers: `@vitejs/plugin-react`, `@types/react`, `@types/react-dom`, `@vitest/coverage-v8`, `fake-indexeddb`, `eslint`, `@eslint/js`, `typescript-eslint`. | ✅ | 2026-06-20 |
-| TASK-003 | Create `tsconfig.json` (strict: true, noImplicitAny, exactOptionalPropertyTypes) and `vite.config.ts` wiring `@crxjs/vite-plugin` to `manifest.config.ts`. | | |
+| TASK-003 | Create `tsconfig.json` (strict: true, noImplicitAny, exactOptionalPropertyTypes) and `vite.config.ts` wiring `@crxjs/vite-plugin` to `manifest.config.ts`. | ✅ | 2026-06-20 |
 | TASK-004 | Create `vitest.config.ts` with `environment: 'node'` for lib tests and `jsdom` for popup tests, `globals: true`, coverage via `@vitest/coverage-v8`. | | |
 | TASK-005 | Author `manifest.config.ts`: MV3, `permissions: [storage, alarms, contextMenus, notifications]`, `host_permissions: ['<all_urls>']`, background service worker (`type: module`), popup `action`. | | |
 | TASK-006 | Create `src/lib/types.ts`: `Source`, `Post`, `Settings` interfaces (per §5) and the discriminated-union `Message` type covering `CRAWL_ALL`, `CRAWL_SOURCE`, `SAVE_SOURCE`, `DELETE_SOURCE` request/response shapes. | | |
