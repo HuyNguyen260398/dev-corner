@@ -41,14 +41,68 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Each check runs independently (continue-on-error) so the summary below
+      # reports every check's result even when an earlier one fails. The final
+      # gate step then fails the job if any check did not pass.
       - name: Lint
+        id: lint
+        continue-on-error: true
         run: pnpm lint
 
       - name: Type check
+        id: typecheck
+        continue-on-error: true
         run: pnpm typecheck
 
       - name: Test
+        id: test
+        continue-on-error: true
         run: pnpm test
 
       - name: Build
+        id: build
+        continue-on-error: true
         run: pnpm build
+
+      - name: Job summary
+        if: always()
+        env:
+          LINT: ${{ steps.lint.outcome }}
+          TYPECHECK: ${{ steps.typecheck.outcome }}
+          TEST: ${{ steps.test.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+        run: |
+          status() {
+            case "$1" in
+              success) echo "✅ Passed" ;;
+              skipped) echo "⏭️ Skipped" ;;
+              *)       echo "❌ Failed" ;;
+            esac
+          }
+          {
+            echo "## CI results"
+            echo ""
+            echo "| Check | Status |"
+            echo "| --- | --- |"
+            echo "| Lint | $(status "$LINT") |"
+            echo "| Type check | $(status "$TYPECHECK") |"
+            echo "| Test | $(status "$TEST") |"
+            echo "| Build | $(status "$BUILD") |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Gate on check results
+        if: always()
+        env:
+          LINT: ${{ steps.lint.outcome }}
+          TYPECHECK: ${{ steps.typecheck.outcome }}
+          TEST: ${{ steps.test.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+        run: |
+          failed=false
+          for check in LINT TYPECHECK TEST BUILD; do
+            if [ "${!check}" != "success" ]; then
+              echo "::error::$check did not pass (outcome: ${!check})"
+              failed=true
+            fi
+          done
+          [ "$failed" = false ]
