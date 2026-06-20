@@ -6,7 +6,7 @@
   <entry>
     <title>Atom Post One</title>
     <link rel="alternate" href="https://atom.example.com/a1" />
-    <updated>2026-06-18T08:00:00Z</updated>
+    <updated>2026-06-20T08:00:00Z</updated>
     <summary>First atom summary.</summary>
     <media:thumbnail url="https://atom.example.com/thumb-a1.jpg" />
   </entry>
@@ -19,7 +19,7 @@
   <entry>
     <title>Atom Post Three</title>
     <link href="https://atom.example.com/a3" />
-    <updated>2026-06-20T08:00:00Z</updated>
+    <updated>2026-06-18T08:00:00Z</updated>
     <summary>Third atom summary.</summary>
   </entry>
 </feed>

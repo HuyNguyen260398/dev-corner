@@ -8,14 +8,14 @@
       <title>Post One</title>
       <link>https://example.com/post-1</link>
       <description><![CDATA[<p>First post body with <strong>HTML</strong> and an <img src="https://example.com/inline-1.png"/> image.</p>]]></description>
-      <pubDate>Mon, 16 Jun 2026 09:00:00 GMT</pubDate>
+      <pubDate>Fri, 20 Jun 2026 09:00:00 GMT</pubDate>
       <media:thumbnail url="https://example.com/thumb-1.jpg" />
     </item>
     <item>
       <title>Post Two</title>
       <link>https://example.com/post-2</link>
       <description>Second post plain summary.</description>
-      <pubDate>Tue, 17 Jun 2026 09:00:00 GMT</pubDate>
+      <pubDate>Thu, 19 Jun 2026 09:00:00 GMT</pubDate>
       <media:content url="https://example.com/media-2.jpg" medium="image" />
     </item>
     <item>
@@ -29,19 +29,19 @@
       <title>Post Four</title>
       <link>https://example.com/post-4</link>
       <description><![CDATA[<p>Fourth post, thumbnail comes from <img src="https://example.com/content-4.png"/> content.</p>]]></description>
-      <pubDate>Thu, 19 Jun 2026 09:00:00 GMT</pubDate>
+      <pubDate>Tue, 17 Jun 2026 09:00:00 GMT</pubDate>
     </item>
     <item>
       <title>Post Five</title>
       <link>https://example.com/post-5</link>
       <description>Fifth post.</description>
-      <pubDate>Fri, 20 Jun 2026 09:00:00 GMT</pubDate>
+      <pubDate>Mon, 16 Jun 2026 09:00:00 GMT</pubDate>
     </item>
     <item>
       <title>Post Six</title>
       <link>https://example.com/post-6</link>
-      <description>Sixth post, should be dropped by the 5-entry cap.</description>
-      <pubDate>Sat, 21 Jun 2026 09:00:00 GMT</pubDate>
+      <description>Sixth post, the oldest, dropped by the newest-5 cap.</description>
+      <pubDate>Sun, 15 Jun 2026 09:00:00 GMT</pubDate>
     </item>
   </channel>
 </rss>
