@@ -4,13 +4,13 @@ version: 1.0
 date_created: 2026-06-20
 last_updated: 2026-06-20
 owner: Huy Nguyen
-status: 'Planned'
+status: 'Completed'
 tags: [feature, library, testing]
 ---
 
 # Introduction
 
-![Status: Planned](https://img.shields.io/badge/status-Planned-blue)
+![Status: Completed](https://img.shields.io/badge/status-Completed-green)
 
 Implement the pure logic in `src/lib/` — selection algorithm, feed parser, thumbnail/summary helpers, and scheduling math — with thorough Vitest coverage. This is the project's primary test surface. Phase 2 of the [master plan](./feature-dev-corner-mvp-1.md).
 
@@ -35,16 +35,18 @@ Implement the pure logic in `src/lib/` — selection algorithm, feed parser, thu
 
 | Task | Description | Completed | Commit |
 |------|-------------|-----------|--------|
-| TASK-009 | Implement `src/lib/selection.ts`: seeded RNG (mulberry32 seeded from `YYYY-MM-DD`); four N-branches; `N > 5` picks 5 random sources, newest each (isolated in one named function); order by `publishedAt` desc then source name. | | |
-| TASK-010 | Implement `src/lib/feed.ts`: `discoverFeedUrl(html, baseUrl)` (`<link rel="alternate">` then probe `/feed`, `/rss`, `/rss.xml`, `/atom.xml`, `/feed.xml`, `/index.xml`) and `parseFeed(xml)` returning up to 5 normalized RSS/Atom entries. | | |
-| TASK-011 | Implement `src/lib/thumbnail.ts`: fallback chain `feed media` → `og:image` → first content `<img>` → placeholder. | | |
-| TASK-012 | Implement `src/lib/summary.ts`: strip HTML, clamp to ~200 chars. | | |
-| TASK-013 | Implement `src/lib/schedule.ts`: `msUntilNext0700(now)` correct across day rollover, time zone, and DST. | | |
-| TASK-014 | `tests/lib/selection.test.ts`: cover N==0, N<5, N==5, N>5; determinism; ordering. | | |
-| TASK-015 | `tests/lib/feed.test.ts`: RSS 2.0, Atom, missing-fields fixtures; mapping + 5-entry cap. | | |
-| TASK-016 | `tests/lib/thumbnail.test.ts`: each rung of the chain incl. placeholder. | | |
-| TASK-017 | `tests/lib/schedule.test.ts`: before/after/exactly 07:00 and DST spring-forward / fall-back. | | |
-| TASK-018 | Add fixtures under `tests/fixtures/`: `rss-2.0.xml`, `atom.xml`, `feed-missing-fields.xml`, `page-with-feed-link.html`, `page-no-feed.html`. | | |
+| TASK-009 | Implement `src/lib/selection.ts`: seeded RNG (mulberry32 seeded from `YYYY-MM-DD`); four N-branches; `N > 5` picks 5 random sources, newest each (isolated in one named function); order by `publishedAt` desc then source name. | ✅ | f7ceef9 |
+| TASK-010 | Implement `src/lib/feed.ts`: `discoverFeedUrl(html, baseUrl)` (`<link rel="alternate">`) and `feedProbeUrls(baseUrl)` for the common paths (`/feed`, `/rss`, `/rss.xml`, `/atom.xml`, `/feed.xml`, `/index.xml`; network probing stays in the worker), plus `parseFeed(xml)` returning up to 5 normalized RSS/Atom entries. | ✅ | 5ea4117 |
+| TASK-011 | Implement `src/lib/thumbnail.ts`: fallback chain `feed media` → `og:image` → first content `<img>` → placeholder. | ✅ | 5cc005e |
+| TASK-012 | Implement `src/lib/summary.ts`: strip HTML, clamp to ~200 chars. | ✅ | 2a3f683 |
+| TASK-013 | Implement `src/lib/schedule.ts`: `msUntilNext0700(now)` correct across day rollover, time zone, and DST. | ✅ | 98892aa |
+| TASK-014 | `tests/lib/selection.test.ts`: cover N==0, N<5, N==5, N>5; determinism; ordering. | ✅ | f7ceef9 |
+| TASK-015 | `tests/lib/feed.test.ts`: RSS 2.0, Atom, missing-fields fixtures; mapping + 5-entry cap. | ✅ | 5ea4117 |
+| TASK-016 | `tests/lib/thumbnail.test.ts`: each rung of the chain incl. placeholder. | ✅ | 5cc005e |
+| TASK-017 | `tests/lib/schedule.test.ts`: before/after/exactly 07:00 and DST spring-forward / fall-back. | ✅ | 98892aa |
+| TASK-018 | Add fixtures under `tests/fixtures/`: `rss-2.0.xml`, `atom.xml`, `feed-missing-fields.xml`, `page-with-feed-link.html`, `page-no-feed.html`. | ✅ | 2a3f683 |
+
+> **Note (TASK-010):** the development plan describes `discoverFeedUrl` as also probing common feed paths. Because `src/lib/` is side-effect-free (GUD-001) and probing needs `fetch`, that work is split: `discoverFeedUrl` parses the declared feed from already-fetched HTML, and `feedProbeUrls` returns the candidate URLs for the worker to fetch in order. Q1 resolved to interpretation (a) — `N > 5` picks 5 random sources, newest each — isolated in `selectWhenManySources` for easy reversal.
 
 ## 3. Dependencies
 
