@@ -4,13 +4,13 @@ version: 1.0
 date_created: 2026-06-20
 last_updated: 2026-06-20
 owner: Huy Nguyen
-status: 'Planned'
+status: 'Completed'
 tags: [feature, ui, storage]
 ---
 
 # Introduction
 
-![Status: Planned](https://img.shields.io/badge/status-Planned-blue)
+![Status: Completed](https://img.shields.io/badge/status-Completed-green)
 
 Let the user save the current page (or a right-clicked link) as a source and manage a deletable list persisted in IndexedDB (milestone **M2**; REQ-F1, F2, F3, F12). Phase 3 of the [master plan](./feature-dev-corner-mvp-1.md).
 
@@ -34,11 +34,11 @@ Let the user save the current page (or a right-clicked link) as a source and man
 
 | Task | Description | Completed | Commit |
 |------|-------------|-----------|--------|
-| TASK-019 | Implement `src/lib/sources.ts`: `addSource(url, title?)` (upsert by unique `url`), `deleteSource(id)`, `listSources()` — pure DB ops, no `chrome.*`. | | |
-| TASK-020 | Register `chrome.contextMenus` "Save to dev-corner" (`contexts: ['page','link']`) on install; on click resolve target URL and call `addSource`. | | |
-| TASK-021 | Implement worker `SAVE_SOURCE` / `DELETE_SOURCE` handlers using the typed unions; respond with typed results. | | |
-| TASK-022 | Popup "Save current page" (`chrome.tabs.query` → `SAVE_SOURCE`); source list via `useLiveQuery` with a delete control. | | |
-| TASK-023 | `tests/lib/sources.test.ts` (fake-indexeddb): upsert-by-url idempotency and delete. | | |
+| TASK-019 | Implement `src/lib/sources.ts`: `addSource(url, title?)` (upsert by unique `url`), `deleteSource(id)`, `listSources()` — pure DB ops, no `chrome.*`. | ✅ | `bab463a` |
+| TASK-020 | Register `chrome.contextMenus` "Save to dev-corner" (`contexts: ['page','link']`) on install; on click resolve target URL and call `addSource`. | ✅ | `ff89afc` |
+| TASK-021 | Implement worker `SAVE_SOURCE` / `DELETE_SOURCE` handlers using the typed unions; respond with typed results. | ✅ | `3d7c68a` |
+| TASK-022 | Popup "Save current page" (`chrome.tabs.query` → `SAVE_SOURCE`); source list via `useLiveQuery` with a delete control. | ✅ | `a99bcf9` |
+| TASK-023 | `tests/lib/sources.test.ts` (fake-indexeddb): upsert-by-url idempotency and delete. | ✅ | `5026454` |
 
 ## 3. Dependencies
 
