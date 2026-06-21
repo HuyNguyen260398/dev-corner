@@ -501,6 +501,63 @@ describe('worker crawl wiring', () => {
     })
   })
 
+  it('does not create a second daily notification on the same local day', async () => {
+    vi.mocked(Date.now).mockReturnValue(new Date(2026, 5, 20, 7, 0, 0).getTime())
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    await addSourceRow('https://blog.example.com/')
+    await import('../../src/background/index')
+    const alarm = { name: 'daily-0700-crawl', scheduledTime: Date.now() }
+
+    expectAlarmListener()(alarm)
+    await vi.waitFor(() => {
+      expect(chrome.notifications.create).toHaveBeenCalledTimes(1)
+    })
+
+    expectAlarmListener()(alarm)
+    await vi.waitFor(() => {
+      expect(chrome.alarms.create).toHaveBeenCalledTimes(2)
+    })
+    expect(chrome.notifications.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not notify after a manual crawl refresh', async () => {
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    await addSourceRow('https://blog.example.com/')
+    await import('../../src/background/index')
+    const listener = expectMessageListener()
+
+    await expect(sendWorkerMessage(listener, { type: 'CRAWL_ALL' })).resolves.toMatchObject({
+      ok: true,
+      newPostsWritten: 5,
+    })
+    expect(chrome.notifications.create).not.toHaveBeenCalled()
+  })
+
+  it('does not notify when daily notifications are disabled', async () => {
+    storage.values.settings = { enableDailyCron: true, enableDailyNotifications: false }
+    vi.mocked(Date.now).mockReturnValue(new Date(2026, 5, 20, 7, 0, 0).getTime())
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    await addSourceRow('https://blog.example.com/')
+    await import('../../src/background/index')
+
+    expectAlarmListener()({ name: 'daily-0700-crawl', scheduledTime: Date.now() })
+
+    await vi.waitFor(async () => {
+      expect(await db.posts.count()).toBe(5)
+    })
+    expect(chrome.notifications.create).not.toHaveBeenCalled()
+    expect(storage.values.lastDigestNotificationDate).toBeUndefined()
+  })
+
   it('returns persisted settings with notification defaults and crawl status over typed messages', async () => {
     storage.values.settings = { enableDailyCron: false }
     storage.values.crawlInProgress = true
