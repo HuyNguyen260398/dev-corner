@@ -1,9 +1,11 @@
 // Feed discovery + parsing (PAT-001, DEVELOPMENT_PLAN §3). Side-effect-free:
-// parsing uses DOMParser, never `document` (CON-004), and there is NO network
-// here — the service worker owns fetching. `discoverFeedUrl` reads the declared
-// feed from already-fetched HTML; `feedProbeUrls` returns the common-path
-// candidates the worker fetches in order when no feed is declared.
+// parsing uses a bundled DOMParser-compatible parser, never `document` (CON-004),
+// and there is NO network here — the service worker owns fetching.
+// `discoverFeedUrl` reads the declared feed from already-fetched HTML;
+// `feedProbeUrls` returns the common-path candidates the worker fetches in order
+// when no feed is declared.
 
+import { parseMarkup } from './dom'
 import { summarize } from './summary'
 import { resolveThumbnail } from './thumbnail'
 
@@ -23,7 +25,7 @@ const PROBE_PATHS = ['/feed', '/rss', '/rss.xml', '/atom.xml', '/feed.xml', '/in
 
 /** The declared RSS/Atom feed URL from a page's `<head>`, resolved absolute. */
 export function discoverFeedUrl(html: string, baseUrl: string): string | undefined {
-  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const doc = parseMarkup(html, 'text/html')
   const links = Array.from(doc.querySelectorAll('link[rel="alternate"]'))
   const feedLink = links.find((l) => {
     const type = l.getAttribute('type') ?? ''
@@ -40,7 +42,7 @@ export function feedProbeUrls(baseUrl: string): string[] {
 
 /** Parse RSS 2.0 or Atom XML into up to 5 entries, newest-first. */
 export function parseFeed(xml: string): FeedEntry[] {
-  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  const doc = parseMarkup(xml, 'application/xml')
   const root = doc.documentElement?.nodeName.toLowerCase()
 
   const nodes =

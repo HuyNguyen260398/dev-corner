@@ -1,4 +1,5 @@
 import { db } from '../lib/db'
+import { parseMarkup } from '../lib/dom'
 import { discoverFeedUrl, feedProbeUrls, parseFeed, type FeedEntry } from '../lib/feed'
 import { summarize } from '../lib/summary'
 import { resolveThumbnail } from '../lib/thumbnail'
@@ -159,7 +160,7 @@ async function resolveFeed(
 }
 
 async function extractHtmlEntries(fetchedPage: FetchTextResult): Promise<HtmlEntry[]> {
-  const doc = new DOMParser().parseFromString(fetchedPage.text, 'text/html')
+  const doc = parseMarkup(fetchedPage.text, 'text/html')
   const sourceOrigin = new URL(fetchedPage.url).origin
   const links = Array.from(doc.querySelectorAll('article a, h2 a, h3 a'))
   const seen = new Set<string>()
@@ -197,7 +198,7 @@ async function enrichHtmlEntry(candidate: { title: string; postUrl: string }): P
     }
   }
 
-  const doc = new DOMParser().parseFromString(page.text, 'text/html')
+  const doc = parseMarkup(page.text, 'text/html')
   const summary = metaContent(doc, 'og:description') ?? ''
   const ogImage = absoluteUrl(metaContent(doc, 'og:image'), candidate.postUrl)
 

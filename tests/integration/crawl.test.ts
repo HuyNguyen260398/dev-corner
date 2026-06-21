@@ -86,6 +86,20 @@ describe('crawlSource', () => {
     })
   })
 
+  it('crawls in a service-worker-like runtime without global DOMParser', async () => {
+    vi.stubGlobal('DOMParser', undefined)
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    const source = await addSourceRow('https://blog.example.com/')
+
+    const result = await crawlSource(source)
+
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 5 })
+    expect(await db.posts.count()).toBe(5)
+  })
+
   it('upserts by postUrl so re-crawling the same feed does not duplicate posts', async () => {
     installFetchMock({
       'https://blog.example.com/': pageWithFeed,
