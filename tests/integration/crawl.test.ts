@@ -41,8 +41,12 @@ const pageWithoutFeed = fixture('page-no-feed.html')
 let storage: MockStorageArea
 let messageListeners: MessageListener[]
 let clickListeners: ContextMenuClickListener[]
+let startupListeners: Array<() => void>
+let installedListeners: Array<() => void>
+let alarmListeners: Array<(alarm: chrome.alarms.Alarm) => void>
 
 beforeEach(async () => {
+  vi.resetModules()
   vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-06-20T10:15:00+07:00').getTime())
 
   await db.posts.clear()
@@ -261,6 +265,81 @@ describe('worker crawl wiring', () => {
       title: 'Example Blog',
     })
   })
+
+  it('starts a crawl when Chrome starts', async () => {
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    await addSourceRow('https://blog.example.com/')
+    await import('../../src/background/index')
+
+    expectStartupListener()()
+
+    await vi.waitFor(async () => {
+      expect(await db.posts.count()).toBe(5)
+    })
+    expect(storage.values.crawlInProgress).toBe(false)
+  })
+
+  it('schedules daily 07:00 crawls when enabled and clears the alarm when disabled', async () => {
+    vi.mocked(Date.now).mockReturnValue(new Date(2026, 5, 20, 6, 30, 0).getTime())
+    await import('../../src/background/index')
+
+    expectInstalledListener()()
+    await vi.waitFor(() => {
+      expect(chrome.alarms.create).toHaveBeenCalledWith('daily-0700-crawl', {
+        when: new Date(2026, 5, 20, 7, 0, 0).getTime(),
+      })
+    })
+
+    const listener = expectMessageListener()
+    await expect(
+      sendWorkerMessage(listener, {
+        type: 'UPDATE_SETTINGS',
+        settings: { enableDailyCron: false },
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      settings: { enableDailyCron: false },
+    })
+    expect(chrome.alarms.clear).toHaveBeenCalledWith('daily-0700-crawl', expect.any(Function))
+  })
+
+  it('crawls and reschedules when the daily alarm fires', async () => {
+    vi.mocked(Date.now).mockReturnValue(new Date(2026, 5, 20, 7, 0, 0).getTime())
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    await addSourceRow('https://blog.example.com/')
+    await import('../../src/background/index')
+
+    expectAlarmListener()({ name: 'daily-0700-crawl', scheduledTime: Date.now() })
+
+    await vi.waitFor(async () => {
+      expect(await db.posts.count()).toBe(5)
+    })
+    expect(chrome.alarms.create).toHaveBeenCalledWith('daily-0700-crawl', {
+      when: new Date(2026, 5, 21, 7, 0, 0).getTime(),
+    })
+  })
+
+  it('returns persisted settings and crawl status over typed messages', async () => {
+    storage.values.settings = { enableDailyCron: false }
+    storage.values.crawlInProgress = true
+    await import('../../src/background/index')
+    const listener = expectMessageListener()
+
+    await expect(sendWorkerMessage(listener, { type: 'GET_SETTINGS' })).resolves.toEqual({
+      ok: true,
+      settings: { enableDailyCron: false },
+    })
+    await expect(sendWorkerMessage(listener, { type: 'GET_CRAWL_STATUS' })).resolves.toEqual({
+      ok: true,
+      crawlInProgress: true,
+    })
+  })
 })
 
 async function addSourceRow(url: string): Promise<Source & { id: number }> {
@@ -300,12 +379,21 @@ function installChromeMock(): MockStorageArea {
   }
   messageListeners = []
   clickListeners = []
+  startupListeners = []
+  installedListeners = []
+  alarmListeners = []
 
   vi.stubGlobal('chrome', {
     storage: { local: area },
     runtime: {
-      onInstalled: listenerSlot<() => void>([]),
+      onInstalled: listenerSlot(installedListeners),
+      onStartup: listenerSlot(startupListeners),
       onMessage: listenerSlot(messageListeners),
+    },
+    alarms: {
+      create: vi.fn(),
+      clear: vi.fn((_name: string, callback?: (wasCleared: boolean) => void) => callback?.(true)),
+      onAlarm: listenerSlot(alarmListeners),
     },
     contextMenus: {
       create: vi.fn(),
@@ -333,6 +421,24 @@ function expectMessageListener(): MessageListener {
 function expectClickListener(): ContextMenuClickListener {
   const listener = clickListeners[0]
   if (listener === undefined) throw new Error('Expected a context-menu click listener')
+  return listener
+}
+
+function expectStartupListener(): () => void {
+  const listener = startupListeners[0]
+  if (listener === undefined) throw new Error('Expected a startup listener')
+  return listener
+}
+
+function expectInstalledListener(): () => void {
+  const listener = installedListeners[0]
+  if (listener === undefined) throw new Error('Expected an installed listener')
+  return listener
+}
+
+function expectAlarmListener(): (alarm: chrome.alarms.Alarm) => void {
+  const listener = alarmListeners[0]
+  if (listener === undefined) throw new Error('Expected an alarm listener')
   return listener
 }
 
