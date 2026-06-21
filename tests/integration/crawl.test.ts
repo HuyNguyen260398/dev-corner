@@ -485,6 +485,17 @@ describe('worker crawl wiring', () => {
     await vi.waitFor(async () => {
       expect(await db.posts.count()).toBe(5)
     })
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      'daily-digest-2026-06-20',
+      {
+        type: 'basic',
+        iconUrl: 'icons/icon-128.png',
+        title: 'dev-corner digest',
+        message: '5 new posts are ready in your 5-post digest.',
+      },
+      expect.any(Function),
+    )
+    expect(storage.values.lastDigestNotificationDate).toBe('2026-06-20')
     expect(chrome.alarms.create).toHaveBeenCalledWith('daily-0700-crawl', {
       when: new Date(2026, 5, 21, 7, 0, 0).getTime(),
     })
