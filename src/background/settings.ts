@@ -4,6 +4,7 @@ export const SETTINGS_KEY = 'settings'
 
 const DEFAULT_SETTINGS: Settings = {
   enableDailyCron: true,
+  enableDailyNotifications: true,
 }
 
 export async function getSettings(): Promise<Settings> {

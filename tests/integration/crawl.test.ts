@@ -439,7 +439,7 @@ describe('worker crawl wiring', () => {
       }),
     ).resolves.toEqual({
       ok: true,
-      settings: { enableDailyCron: false },
+      settings: { enableDailyCron: false, enableDailyNotifications: true },
     })
     expect(chrome.alarms.clear).toHaveBeenCalledWith('daily-0700-crawl', expect.any(Function))
   })
@@ -463,7 +463,7 @@ describe('worker crawl wiring', () => {
     })
   })
 
-  it('returns persisted settings and crawl status over typed messages', async () => {
+  it('returns persisted settings with notification defaults and crawl status over typed messages', async () => {
     storage.values.settings = { enableDailyCron: false }
     storage.values.crawlInProgress = true
     await import('../../src/background/index')
@@ -471,7 +471,7 @@ describe('worker crawl wiring', () => {
 
     await expect(sendWorkerMessage(listener, { type: 'GET_SETTINGS' })).resolves.toEqual({
       ok: true,
-      settings: { enableDailyCron: false },
+      settings: { enableDailyCron: false, enableDailyNotifications: true },
     })
     await expect(sendWorkerMessage(listener, { type: 'GET_CRAWL_STATUS' })).resolves.toEqual({
       ok: true,

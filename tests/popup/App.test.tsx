@@ -11,10 +11,13 @@ beforeEach(async () => {
   await db.posts.clear()
   await db.sources.clear()
   responses = {
-    GET_SETTINGS: { ok: true, settings: { enableDailyCron: true } },
+    GET_SETTINGS: { ok: true, settings: { enableDailyCron: true, enableDailyNotifications: true } },
     GET_CRAWL_STATUS: { ok: true, crawlInProgress: false },
     CRAWL_ALL: { ok: true, sourcesCrawled: 0, postsWritten: 0, failures: [] },
-    UPDATE_SETTINGS: { ok: true, settings: { enableDailyCron: false } },
+    UPDATE_SETTINGS: {
+      ok: true,
+      settings: { enableDailyCron: false, enableDailyNotifications: true },
+    },
   }
   vi.stubGlobal('chrome', {
     runtime: {
