@@ -29,11 +29,14 @@ export function registerNotificationClickHandler(): void {
   chrome.notifications.onClicked.addListener((notificationId) => {
     if (!notificationId.startsWith(DIGEST_NOTIFICATION_PREFIX)) return
 
-    const openPopup = chrome.action.openPopup
+    const action = chrome.action as Partial<Pick<typeof chrome.action, 'openPopup'>>
+    const openPopup = action.openPopup
     if (openPopup !== undefined) {
-      void openPopup.call(chrome.action).catch(() => {
+      try {
+        openPopup.call(chrome.action, undefined, () => undefined)
+      } catch {
         void openDigestTab()
-      })
+      }
       return
     }
 
@@ -43,7 +46,7 @@ export function registerNotificationClickHandler(): void {
 
 function createNotification(
   notificationId: string,
-  options: chrome.notifications.NotificationOptions<true>,
+  options: chrome.notifications.NotificationCreateOptions,
 ): Promise<void> {
   return new Promise((resolve) => {
     chrome.notifications.create(notificationId, options, () => resolve())

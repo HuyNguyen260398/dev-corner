@@ -15,7 +15,7 @@ export interface ShouldNotifyDailyDigestInput {
   enableDailyNotifications: boolean
   newPostCount: number
   dateKey: string
-  lastNotificationDate?: string
+  lastNotificationDate?: string | undefined
 }
 
 export function localDateKey(date: Date): string {

@@ -705,7 +705,7 @@ function installChromeMock(): MockStorageArea {
       create: vi.fn(
         (
           _notificationId: string,
-          _options: chrome.notifications.NotificationOptions<true>,
+          _options: chrome.notifications.NotificationCreateOptions,
           callback?: (notificationId: string) => void,
         ) => callback?.(_notificationId),
       ),
