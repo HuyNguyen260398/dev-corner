@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="dev-corner icon">
+  <rect width="128" height="128" rx="28" fill="#0f172a" />
+  <rect x="23" y="26" width="82" height="76" rx="14" fill="#f8fafc" />
+  <path d="M41 47h46" stroke="#0f172a" stroke-width="9" stroke-linecap="round" />
+  <path d="M41 64h34" stroke="#2563eb" stroke-width="8" stroke-linecap="round" />
+  <path d="M41 81h46" stroke="#64748b" stroke-width="8" stroke-linecap="round" />
+  <path d="M86 30l12 16h-12z" fill="#dbeafe" />
+</svg>
