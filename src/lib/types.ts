@@ -51,9 +51,9 @@ export interface Settings {
 export type WorkerRequest =
   | { type: 'CRAWL_ALL' }
   | { type: 'CRAWL_SOURCE'; sourceId: number }
-  | { type: 'SAVE_SOURCE'; url: string; title?: string }
+  | { type: 'SAVE_SOURCE'; url: string; title?: string; permissionGranted?: boolean }
   | { type: 'DELETE_SOURCE'; sourceId: number }
-  | { type: 'REQUEST_SOURCE_PERMISSION'; sourceId: number }
+  | { type: 'REQUEST_SOURCE_PERMISSION'; sourceId: number; permissionGranted?: boolean }
   | { type: 'GET_SETTINGS' }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<Settings> }
   | { type: 'GET_CRAWL_STATUS' }

@@ -1,15 +1,6 @@
 import { db } from '../lib/db'
+import { originPatternForUrl } from '../lib/permissions'
 import type { SourcePermissionState } from '../lib/types'
-
-const SUPPORTED_PROTOCOLS = new Set(['http:', 'https:'])
-
-export function originPatternForUrl(sourceUrl: string): string {
-  const url = new URL(sourceUrl)
-  if (!SUPPORTED_PROTOCOLS.has(url.protocol)) {
-    throw new Error(`Source URL must use http or https: ${sourceUrl}`)
-  }
-  return `${url.protocol}//${url.host}/*`
-}
 
 export async function hasSourcePermission(sourceUrl: string): Promise<boolean> {
   return containsOrigin(originPatternForUrl(sourceUrl))
@@ -30,6 +21,14 @@ export async function requestStoredSourcePermission(sourceId: number): Promise<b
     throw new Error(`Source ${sourceId} was not found`)
   }
   return requestAndMarkSourcePermission(sourceId, source.url)
+}
+
+export async function markSourcePermissionResult(
+  sourceId: number,
+  granted: boolean,
+): Promise<boolean> {
+  await markSourcePermissionState(sourceId, granted ? 'granted' : 'needsPermission')
+  return granted
 }
 
 export async function ensureSourcePermission(sourceId: number, sourceUrl: string): Promise<boolean> {

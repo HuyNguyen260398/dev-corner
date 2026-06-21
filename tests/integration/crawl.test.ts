@@ -334,6 +334,33 @@ describe('worker crawl wiring', () => {
     })
   })
 
+  it('records a popup-granted permission result without prompting from the worker', async () => {
+    installFetchMock({
+      'https://denied.example.com/': pageWithFeed,
+      'https://denied.example.com/feed.xml': rss,
+    })
+    const source = await addSourceRow('https://denied.example.com/')
+    await db.sources.update(source.id, { permissionState: 'needsPermission' })
+    await import('../../src/background/index')
+    const listener = expectMessageListener()
+
+    await expect(
+      sendWorkerMessage(listener, {
+        type: 'REQUEST_SOURCE_PERMISSION',
+        sourceId: source.id,
+        permissionGranted: true,
+      }),
+    ).resolves.toMatchObject({ ok: true, permissionGranted: true })
+
+    expect(permissions.request).not.toHaveBeenCalled()
+    await vi.waitFor(async () => {
+      expect(await db.posts.count()).toBe(5)
+    })
+    await expect(db.sources.get(source.id)).resolves.toMatchObject({
+      permissionState: 'granted',
+    })
+  })
+
   it('handles CRAWL_SOURCE / CRAWL_ALL messages and crawls after a context-menu save', async () => {
     installFetchMock({
       'https://blog.example.com/': pageWithFeed,
