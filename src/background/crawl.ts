@@ -1,6 +1,7 @@
 import { db } from '../lib/db'
 import { parseMarkup } from '../lib/dom'
 import { discoverFeedUrl, feedProbeUrls, parseFeed, type FeedEntry } from '../lib/feed'
+import { pruneOldPosts } from '../lib/prune'
 import { summarize } from '../lib/summary'
 import { resolveThumbnail } from '../lib/thumbnail'
 import type { Post, Source } from '../lib/types'
@@ -120,6 +121,8 @@ export async function crawlAll(): Promise<CrawlAllResult> {
         await storageRemove(CRAWL_QUEUE_KEY)
       }
     }
+
+    await pruneOldPosts()
 
     return { ok: true, sourcesCrawled, postsWritten, failures }
   } finally {
