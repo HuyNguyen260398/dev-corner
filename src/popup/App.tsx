@@ -65,6 +65,12 @@ export function App() {
     if (!res.ok) setError(res.error)
   }
 
+  async function requestPermission(id: number) {
+    setError(null)
+    const res = await send({ type: 'REQUEST_SOURCE_PERMISSION', sourceId: id })
+    if (!res.ok) setError(res.error)
+  }
+
   async function refreshNow() {
     setError(null)
     setCrawlInProgress(true)
@@ -119,7 +125,7 @@ export function App() {
         Save current page
       </button>
       {error && <p role="alert">{error}</p>}
-      <SourceList sources={sources} remove={remove} />
+      <SourceList sources={sources} remove={remove} requestPermission={requestPermission} />
     </main>
   )
 }
@@ -192,9 +198,11 @@ function DigestPreview({
 function SourceList({
   sources,
   remove,
+  requestPermission,
 }: {
   sources: Source[] | undefined
   remove: (id: number) => Promise<void>
+  requestPermission: (id: number) => Promise<void>
 }) {
   if (sources === undefined || sources.length === 0) return null
 
@@ -205,6 +213,14 @@ function SourceList({
         {sources.map((source) => (
           <li key={source.id}>
             <span title={source.url}>{source.title}</span>
+            {source.permissionState === 'needsPermission' && (
+              <>
+                <span>Needs permission</span>
+                <button type="button" onClick={() => void requestPermission(source.id!)}>
+                  Grant permission
+                </button>
+              </>
+            )}
             <button type="button" onClick={() => void remove(source.id!)}>
               Delete
             </button>

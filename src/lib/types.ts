@@ -2,6 +2,8 @@
 // All cross-context messages use the discriminated unions below (GUD-003).
 
 /** A user-saved blog/source page. */
+export type SourcePermissionState = 'granted' | 'needsPermission'
+
 export interface Source {
   id?: number
   /** The page the user saved. Unique. */
@@ -15,6 +17,8 @@ export interface Source {
   lastCrawledAt?: number
   /** Last crawl failure, surfaced in the UI. */
   lastError?: string
+  /** Whether Chrome has granted this source origin to the extension. */
+  permissionState?: SourcePermissionState
 }
 
 /** A post extracted from a source (F5 fields). */
@@ -49,6 +53,7 @@ export type WorkerRequest =
   | { type: 'CRAWL_SOURCE'; sourceId: number }
   | { type: 'SAVE_SOURCE'; url: string; title?: string }
   | { type: 'DELETE_SOURCE'; sourceId: number }
+  | { type: 'REQUEST_SOURCE_PERMISSION'; sourceId: number }
   | { type: 'GET_SETTINGS' }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<Settings> }
   | { type: 'GET_CRAWL_STATUS' }
@@ -63,5 +68,6 @@ export type WorkerResponse =
       failures?: Array<{ sourceId: number; error: string }>
       settings?: Settings
       crawlInProgress?: boolean
+      permissionGranted?: boolean
     }
   | { ok: false; error: string }
