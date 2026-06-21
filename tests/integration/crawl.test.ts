@@ -172,6 +172,21 @@ describe('crawlSource', () => {
 })
 
 describe('crawlAll', () => {
+  it('rebuilds a stale empty checkpoint so newly saved sources are crawled', async () => {
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    await addSourceRow('https://blog.example.com/')
+    storage.values[CRAWL_QUEUE_KEY] = []
+
+    const result = await crawlAll()
+
+    expect(result).toEqual({ ok: true, sourcesCrawled: 1, postsWritten: 5, failures: [] })
+    expect(await db.posts.count()).toBe(5)
+    expect(storage.values[CRAWL_QUEUE_KEY]).toBeUndefined()
+  })
+
   it('resumes an existing checkpoint queue instead of restarting every source', async () => {
     installFetchMock({
       'https://second.example.com/': pageWithFeed,
@@ -183,7 +198,7 @@ describe('crawlAll', () => {
 
     const result = await crawlAll()
 
-    expect(result).toEqual({ ok: true, sourcesCrawled: 1, postsWritten: 5 })
+    expect(result).toEqual({ ok: true, sourcesCrawled: 1, postsWritten: 5, failures: [] })
     expect(await db.posts.count()).toBe(5)
     expect(storage.values[CRAWL_QUEUE_KEY]).toBeUndefined()
   })
@@ -209,7 +224,12 @@ describe('worker crawl wiring', () => {
     expect(await db.posts.count()).toBe(5)
 
     await db.posts.clear()
-    await expect(sendWorkerMessage(listener, { type: 'CRAWL_ALL' })).resolves.toEqual({ ok: true })
+    await expect(sendWorkerMessage(listener, { type: 'CRAWL_ALL' })).resolves.toEqual({
+      ok: true,
+      sourcesCrawled: 1,
+      postsWritten: 5,
+      failures: [],
+    })
     expect(await db.posts.count()).toBe(5)
 
     expectClickListener()(

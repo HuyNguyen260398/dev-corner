@@ -63,7 +63,7 @@ chrome.runtime.onMessage.addListener(
         return true
       case 'CRAWL_ALL':
         crawlAll()
-          .then(() => sendResponse({ ok: true }))
+          .then((result) => sendResponse(result))
           .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
         return true
     }

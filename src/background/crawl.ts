@@ -19,6 +19,7 @@ export interface CrawlAllResult {
   ok: true
   sourcesCrawled: number
   postsWritten: number
+  failures: Array<{ sourceId: number; error: string }>
 }
 
 interface HtmlEntry {
@@ -76,14 +77,19 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
 /** Crawl all saved sources, resuming an existing storage-backed queue if present. */
 export async function crawlAll(): Promise<CrawlAllResult> {
   let queue = await storageGet<number[]>(CRAWL_QUEUE_KEY)
-  if (queue === undefined) {
+  if (queue === undefined || queue.length === 0) {
     const sources = await db.sources.toArray()
     queue = sources.flatMap((source) => (source.id == null ? [] : [source.id]))
-    await storageSet(CRAWL_QUEUE_KEY, queue)
+    if (queue.length > 0) {
+      await storageSet(CRAWL_QUEUE_KEY, queue)
+    } else {
+      await storageRemove(CRAWL_QUEUE_KEY)
+    }
   }
 
   let sourcesCrawled = 0
   let postsWritten = 0
+  const failures: CrawlAllResult['failures'] = []
 
   while (queue.length > 0) {
     const sourceId = queue[0]
@@ -94,6 +100,12 @@ export async function crawlAll(): Promise<CrawlAllResult> {
       const result = await crawlSource(source)
       sourcesCrawled += 1
       postsWritten += result.postsWritten
+      if (!result.ok) {
+        failures.push({
+          sourceId,
+          error: result.error ?? 'Crawl failed',
+        })
+      }
     }
 
     queue = queue.slice(1)
@@ -104,7 +116,7 @@ export async function crawlAll(): Promise<CrawlAllResult> {
     }
   }
 
-  return { ok: true, sourcesCrawled, postsWritten }
+  return { ok: true, sourcesCrawled, postsWritten, failures }
 }
 
 export async function crawlSourceById(sourceId: number): Promise<CrawlSourceResult> {
