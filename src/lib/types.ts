@@ -67,6 +67,7 @@ export type WorkerResponse =
       sourceId?: number
       sourcesCrawled?: number
       postsWritten?: number
+      newPostsWritten?: number
       failures?: Array<{ sourceId: number; error: string }>
       settings?: Settings
       crawlInProgress?: boolean

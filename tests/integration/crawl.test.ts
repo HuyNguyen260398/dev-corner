@@ -76,7 +76,7 @@ describe('crawlSource', () => {
 
     const result = await crawlSource(source)
 
-    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 5 })
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 5, newPostsWritten: 5 })
     const posts = await db.posts.orderBy('publishedAt').reverse().toArray()
     expect(posts).toHaveLength(5)
     expect(posts[0]).toMatchObject({
@@ -106,7 +106,7 @@ describe('crawlSource', () => {
 
     const result = await crawlSource(source)
 
-    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 5 })
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 5, newPostsWritten: 5 })
     expect(await db.posts.count()).toBe(5)
   })
 
@@ -117,9 +117,21 @@ describe('crawlSource', () => {
     })
     const source = await addSourceRow('https://blog.example.com/')
 
-    await crawlSource(source)
-    await crawlSource({ ...source, feedUrl: 'https://blog.example.com/feed.xml' })
+    const firstResult = await crawlSource(source)
+    const secondResult = await crawlSource({ ...source, feedUrl: 'https://blog.example.com/feed.xml' })
 
+    expect(firstResult).toEqual({
+      ok: true,
+      sourceId: source.id,
+      postsWritten: 5,
+      newPostsWritten: 5,
+    })
+    expect(secondResult).toEqual({
+      ok: true,
+      sourceId: source.id,
+      postsWritten: 5,
+      newPostsWritten: 0,
+    })
     expect(await db.posts.count()).toBe(5)
   })
 
@@ -137,7 +149,7 @@ describe('crawlSource', () => {
 
     const result = await crawlSource(source)
 
-    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 1 })
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 1, newPostsWritten: 1 })
     await expect(db.posts.toArray()).resolves.toMatchObject([
       {
         sourceId: source.id,
@@ -186,6 +198,7 @@ describe('crawlSource', () => {
       ok: false,
       sourceId: source.id,
       postsWritten: 0,
+      newPostsWritten: 0,
       error: 'network down',
     })
     await expect(db.sources.get(source.id)).resolves.toMatchObject({
@@ -208,7 +221,7 @@ describe('crawlSource', () => {
 
     const result = await crawlSource(source)
 
-    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 0 })
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 0, newPostsWritten: 0 })
     expect(fetchMock).not.toHaveBeenCalled()
     await expect(db.sources.get(source.id)).resolves.toMatchObject({
       permissionState: 'needsPermission',
@@ -227,7 +240,13 @@ describe('crawlAll', () => {
 
     const result = await crawlAll()
 
-    expect(result).toEqual({ ok: true, sourcesCrawled: 1, postsWritten: 5, failures: [] })
+    expect(result).toEqual({
+      ok: true,
+      sourcesCrawled: 1,
+      postsWritten: 5,
+      newPostsWritten: 5,
+      failures: [],
+    })
     expect(await db.posts.count()).toBe(5)
     expect(storage.values[CRAWL_QUEUE_KEY]).toBeUndefined()
   })
@@ -266,7 +285,13 @@ describe('crawlAll', () => {
 
     const result = await crawlAll()
 
-    expect(result).toEqual({ ok: true, sourcesCrawled: 1, postsWritten: 5, failures: [] })
+    expect(result).toEqual({
+      ok: true,
+      sourcesCrawled: 1,
+      postsWritten: 5,
+      newPostsWritten: 5,
+      failures: [],
+    })
     expect(await db.posts.count()).toBe(5)
     expect(storage.values[CRAWL_QUEUE_KEY]).toBeUndefined()
   })
@@ -384,6 +409,7 @@ describe('worker crawl wiring', () => {
       ok: true,
       sourcesCrawled: 1,
       postsWritten: 5,
+      newPostsWritten: 5,
       failures: [],
     })
     expect(await db.posts.count()).toBe(5)
