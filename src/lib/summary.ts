@@ -1,6 +1,8 @@
 // Turn raw feed description/summary HTML into clean preview text (F5).
-// Side-effect-free; relies on DOMParser (provided by the worker at runtime and
-// by jsdom in tests), never `document` (CON-004).
+// Side-effect-free; uses a bundled DOMParser-compatible parser, never `document`
+// (CON-004).
+
+import { parseMarkup } from './dom'
 
 const MAX_LEN = 200
 
@@ -11,7 +13,7 @@ const MAX_LEN = 200
 export function summarize(html: string | undefined, maxLen = MAX_LEN): string {
   if (!html) return ''
 
-  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const doc = parseMarkup(html, 'text/html')
   const text = (doc.body.textContent ?? '').replace(/\s+/g, ' ').trim()
 
   if (text.length <= maxLen) return text

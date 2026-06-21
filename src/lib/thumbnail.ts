@@ -1,6 +1,9 @@
 // Thumbnail resolution (F5). Fallback chain per DEVELOPMENT_PLAN §3:
 //   feed media → og:image → first content <img> → placeholder asset.
-// Side-effect-free; uses DOMParser, never `document` (CON-004).
+// Side-effect-free; uses a bundled DOMParser-compatible parser, never `document`
+// (CON-004).
+
+import { parseMarkup } from './dom'
 
 /** Bundled placeholder shown when a post yields no usable image. */
 export const PLACEHOLDER_THUMBNAIL = '/placeholder.svg'
@@ -8,7 +11,7 @@ export const PLACEHOLDER_THUMBNAIL = '/placeholder.svg'
 /** First `<img>` src found in a fragment of content HTML, if any. */
 export function firstImageSrc(html: string | undefined): string | undefined {
   if (!html) return undefined
-  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const doc = parseMarkup(html, 'text/html')
   const src = doc.querySelector('img')?.getAttribute('src')
   return src ?? undefined
 }

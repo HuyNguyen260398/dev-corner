@@ -52,5 +52,11 @@ export type WorkerRequest =
 
 /** Responses returned by the service worker, discriminated on `ok`. */
 export type WorkerResponse =
-  | { ok: true; sourceId?: number }
+  | {
+      ok: true
+      sourceId?: number
+      sourcesCrawled?: number
+      postsWritten?: number
+      failures?: Array<{ sourceId: number; error: string }>
+    }
   | { ok: false; error: string }
