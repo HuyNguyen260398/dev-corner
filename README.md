@@ -34,12 +34,11 @@ Given the sources that produced posts today (call that count **N**):
 - **N < 5** — one newest post from each source, then fill the remaining slots
   with random posts from the pool.
 - **N = 5** — exactly one newest post from each source.
-- **N > 5** — one post from one randomly chosen source.
+- **N > 5** — five random sources, with the newest post from each.
 - **N = 0** — an empty state.
 
 Randomness is seeded by the date, so the list is stable if you open the popup
-several times in a day. (The N > 5 rule currently yields a single post; this is
-flagged as an open question — see the development plan.)
+several times in a day.
 
 ## Tech stack
 
@@ -48,7 +47,7 @@ flagged as an open question — see the development plan.)
 | Platform | Chrome Manifest V3 |
 | Build | Vite + `@crxjs/vite-plugin` |
 | Language | TypeScript |
-| UI | React 18 |
+| UI | React 19 |
 | Storage | IndexedDB via Dexie |
 | Scheduling | `chrome.alarms` + `chrome.runtime.onStartup` |
 | Parsing | Native `DOMParser` (RSS/Atom + HTML) |
@@ -92,8 +91,37 @@ service worker and IndexedDB, MV3 gotchas, and console snippets — see
 
 ## Status
 
-Planning complete. See [`docs/DEVELOPMENT_PLAN.md`](docs/DEVELOPMENT_PLAN.md) for
-the milestone breakdown (M1–M7) and open questions to resolve before building.
+MVP implementation is in Phase 7 polish for personal/unpacked distribution.
+Automated release gates are:
+
+```bash
+pnpm typecheck
+pnpm exec vitest run --coverage
+pnpm build
+```
+
+`src/lib/` coverage must stay at or above 90%. The production build writes the
+loadable extension to `dist/`.
+
+See [`docs/DEVELOPMENT_PLAN.md`](docs/DEVELOPMENT_PLAN.md) for the full
+milestone breakdown and open product questions.
+
+## Manual test matrix
+
+Before treating an unpacked build as release-ready, load `dist/` from
+`chrome://extensions` and verify the core F1–F12 behavior across these source
+types:
+
+| Case | Example source type | Expected result |
+|---|---|---|
+| RSS blog | A blog with an RSS 2.0 feed | Save succeeds; crawl records up to 5 posts with title, thumbnail, summary, post URL, and source URL. |
+| Atom-only blog | A source exposing Atom but no RSS feed | Feed discovery resolves Atom; posts appear in today's digest without `lastError`. |
+| Feed-less page | A page with no RSS/Atom feed | HTML fallback extracts best-effort posts; missing thumbnails use `/placeholder.svg`. |
+| Paywalled or blocked page | A page that denies fetches or returns an error | Crawl skips the source gracefully and records the failure in `source.lastError`. |
+
+Also confirm popup save, right-click save, source deletion, refresh now, optional
+daily 07:00 crawl, browser-startup crawl, digest click-through, and empty/error
+states.
 
 ## License
 
