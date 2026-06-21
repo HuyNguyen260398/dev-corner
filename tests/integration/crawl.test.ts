@@ -205,6 +205,29 @@ describe('crawlAll', () => {
     expect(storage.values[CRAWL_QUEUE_KEY]).toBeUndefined()
   })
 
+  it('prunes posts outside the retention window after crawling', async () => {
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    await db.posts.bulkAdd([
+      oldPost('2026-06-11', 1),
+      oldPost('2026-06-12', 2),
+      oldPost('2026-06-13', 3),
+      oldPost('2026-06-14', 4),
+      oldPost('2026-06-15', 5),
+      oldPost('2026-06-16', 6),
+      oldPost('2026-06-17', 7),
+    ])
+    await addSourceRow('https://blog.example.com/')
+
+    await crawlAll()
+
+    const remainingDays = new Set((await db.posts.toArray()).map((post) => post.crawlDay))
+    expect(remainingDays.has('2026-06-11')).toBe(false)
+    expect(remainingDays.has('2026-06-20')).toBe(true)
+  })
+
   it('resumes an existing checkpoint queue instead of restarting every source', async () => {
     installFetchMock({
       'https://second.example.com/': pageWithFeed,
@@ -345,6 +368,20 @@ describe('worker crawl wiring', () => {
 async function addSourceRow(url: string): Promise<Source & { id: number }> {
   const id = await db.sources.add({ url, title: url, addedAt: Date.now() })
   return { id, url, title: url, addedAt: Date.now() }
+}
+
+function oldPost(crawlDay: string, id: number) {
+  return {
+    sourceId: id,
+    sourceUrl: `https://old-${id}.example.com/`,
+    title: `Old ${id}`,
+    summary: `Old summary ${id}`,
+    thumbnail: `https://old-${id}.example.com/thumb.jpg`,
+    postUrl: `https://old-${id}.example.com/post`,
+    publishedAt: Date.parse(`${crawlDay}T08:00:00Z`),
+    crawledAt: Date.parse(`${crawlDay}T09:00:00Z`),
+    crawlDay,
+  }
 }
 
 function installFetchMock(responses: FetchMap): ReturnType<typeof vi.fn> {
