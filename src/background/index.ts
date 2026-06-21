@@ -3,7 +3,11 @@
 // shared src/lib/sources path, and trigger background-only crawling. No in-memory
 // state is relied upon between events (CON-002).
 import { crawlAll, crawlSourceById, isCrawlInProgress } from './crawl'
-import { requestAndMarkSourcePermission, requestStoredSourcePermission } from './permissions'
+import {
+  markSourcePermissionResult,
+  requestAndMarkSourcePermission,
+  requestStoredSourcePermission,
+} from './permissions'
 import { configureDailyAlarm, handleDailyAlarm } from './scheduler'
 import { getSettings, updateSettings } from './settings'
 import { addSource, deleteSource } from '../lib/sources'
@@ -53,7 +57,7 @@ chrome.runtime.onMessage.addListener(
   (message: WorkerRequest, _sender, sendResponse: (response: WorkerResponse) => void) => {
     switch (message.type) {
       case 'SAVE_SOURCE':
-        saveSourceWithPermission(message.url, message.title, false)
+        saveSourceWithPermission(message.url, message.title, false, message.permissionGranted)
           .then(({ sourceId, permissionGranted }) =>
             sendResponse({ ok: true, sourceId, permissionGranted }),
           )
@@ -65,7 +69,7 @@ chrome.runtime.onMessage.addListener(
           .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
         return true
       case 'REQUEST_SOURCE_PERMISSION':
-        requestStoredSourcePermission(message.sourceId)
+        resolveSourcePermission(message.sourceId, message.permissionGranted)
           .then(async (permissionGranted) => {
             if (permissionGranted) {
               await crawlSourceById(message.sourceId)
@@ -122,11 +126,24 @@ async function saveSourceWithPermission(
   url: string,
   title: string | undefined,
   crawlAfterGrant: boolean,
+  popupPermissionGranted?: boolean,
 ): Promise<{ sourceId: number; permissionGranted: boolean }> {
   const sourceId = await addSource(url, title)
-  const permissionGranted = await requestAndMarkSourcePermission(sourceId, url)
+  const permissionGranted =
+    popupPermissionGranted === undefined
+      ? await requestAndMarkSourcePermission(sourceId, url)
+      : await markSourcePermissionResult(sourceId, popupPermissionGranted)
   if (permissionGranted && crawlAfterGrant) {
     await crawlSourceById(sourceId)
   }
   return { sourceId, permissionGranted }
+}
+
+function resolveSourcePermission(
+  sourceId: number,
+  popupPermissionGranted: boolean | undefined,
+): Promise<boolean> {
+  return popupPermissionGranted === undefined
+    ? requestStoredSourcePermission(sourceId)
+    : markSourcePermissionResult(sourceId, popupPermissionGranted)
 }

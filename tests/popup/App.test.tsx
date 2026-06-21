@@ -30,6 +30,13 @@ beforeEach(async () => {
     tabs: {
       query: vi.fn(),
     },
+    permissions: {
+      request: vi.fn(
+        (_permissions: chrome.permissions.Permissions, callback: (granted: boolean) => void) => {
+          callback(true)
+        },
+      ),
+    },
   })
 })
 
@@ -46,7 +53,7 @@ describe('App scheduling controls', () => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'GET_CRAWL_STATUS' })
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh now' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh digest' }))
     await waitFor(() => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'CRAWL_ALL' })
     })
@@ -62,6 +69,17 @@ describe('App scheduling controls', () => {
 })
 
 describe('App digest preview', () => {
+  it('renders the dark morning brief shell with primary actions and local status', async () => {
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Morning brief' })).toBeTruthy()
+    expect(screen.getByText('Local only')).toBeTruthy()
+    expect(screen.getByText('07:00 crawl')).toBeTruthy()
+    expect(screen.getByText('5 min read')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Save page' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Sources' })).toBeTruthy()
+  })
+
   it("renders today's selected 5-post digest with thumbnails, summaries, and post links", async () => {
     vi.setSystemTime(new Date('2026-06-20T10:15:00+07:00'))
     await db.sources.bulkAdd(sources(6))
@@ -101,7 +119,9 @@ describe('App digest preview', () => {
 
     render(<App />)
 
-    expect((await screen.findByRole('status')).textContent).toBe('Refreshing latest posts...')
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toBe('Refreshing latest posts...')
+    })
   })
 
   it('surfaces source errors when every saved source failed and no posts are available', async () => {
@@ -120,7 +140,31 @@ describe('App digest preview', () => {
 })
 
 describe('App source permissions', () => {
-  it('surfaces denied source permission and lets the user re-request it', async () => {
+  it('requests current-page permission in the popup before saving a source', async () => {
+    const queryTabs = chrome.tabs.query as unknown as ReturnType<typeof vi.fn>
+    queryTabs.mockResolvedValue([
+      { url: 'https://new-source.test/post', title: 'New Source' } as chrome.tabs.Tab,
+    ])
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Save page' }))
+
+    await waitFor(() => {
+      expect(chrome.permissions.request).toHaveBeenCalledWith(
+        { origins: ['https://new-source.test/*'] },
+        expect.any(Function),
+      )
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'SAVE_SOURCE',
+        url: 'https://new-source.test/post',
+        title: 'New Source',
+        permissionGranted: true,
+      })
+    })
+  })
+
+  it('requests denied source permission in the popup gesture before notifying the worker', async () => {
     await db.sources.add(source(1, { permissionState: 'needsPermission' }))
     responses.REQUEST_SOURCE_PERMISSION = {
       ok: true,
@@ -137,9 +181,14 @@ describe('App source permissions', () => {
     fireEvent.click(within(sourceRow!).getByRole('button', { name: 'Grant permission' }))
 
     await waitFor(() => {
+      expect(chrome.permissions.request).toHaveBeenCalledWith(
+        { origins: ['https://source-1.test/*'] },
+        expect.any(Function),
+      )
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
         type: 'REQUEST_SOURCE_PERMISSION',
         sourceId: 1,
+        permissionGranted: true,
       })
     })
   })
