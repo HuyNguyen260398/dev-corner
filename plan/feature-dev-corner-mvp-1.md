@@ -14,7 +14,7 @@ tags: [feature, architecture, chrome-extension, mv3, testing, index]
 
 This is the **master index** for the dev-corner MVP — a fully local Chrome Manifest V3 extension that crawls user-saved blog sources and shows a daily 5-post digest. It is derived from `docs/DEVELOPMENT_PLAN.md` (the source of truth) plus `docs/adr/ADR-001` (extraction) and `docs/adr/ADR-002` (permissions).
 
-The work is broken into one plan file per phase (mirroring milestones M1–M7, plus an optional Web Store phase). This file holds the program-level decisions, requirements, and the phase index; each linked phase plan holds its own tasks, files, and tests.
+The work is broken into one plan file per phase (mirroring milestones M1–M7, plus optional Web Store and notification phases). This file holds the program-level decisions, requirements, and the phase index; each linked phase plan holds its own tasks, files, and tests.
 
 Confirmed decisions:
 - **Package manager:** pnpm.
@@ -35,18 +35,16 @@ Confirmed decisions:
 | 6 | [Digest UI + pruning](./phase-6-digest-ui.md) | M6 | Planned |
 | 7 | [Polish & release](./phase-7-polish-release.md) | M7 | Planned |
 | 8 | [Web Store permissions](./phase-8-webstore-permissions.md) (optional) | — | On Hold |
+| 9 | [Daily notifications](./phase-9-notifications.md) | Enhancement | Planned |
 
 ## Execution Workflow (commit-per-task)
 
-Each task is completed and committed on its own before the next starts. Per task:
+Each task is completed and committed on its own before the next starts unless a
+phase plan explicitly documents a different completion protocol. Per task:
 1. Implement only that task's scope.
 2. Verify it (relevant tests pass / `pnpm typecheck` clean for touched code).
 3. Mark the task row `✅` with the date and commit hash in its phase plan.
-4. Create exactly one commit: subject `TASK-XXX: <short description>`, ending with:
-
-```
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
-```
+4. Create exactly one commit: subject `TASK-XXX: <short description>`, ending with the co-author trailer specified by the phase plan.
 
 Do not bundle multiple tasks into one commit; do not commit WIP that fails its verification.
 
@@ -64,6 +62,8 @@ Do not bundle multiple tasks into one commit; do not commit WIP that fails its v
 - **REQ-F10**: Each list item shows thumbnail + summary + a click-through link to the original post URL.
 - **REQ-F11**: The preview shows exactly 5 posts, selected by §4 of the development plan.
 - **REQ-F12**: A right-click context-menu item saves the current page (or right-clicked link) as a source.
+- **REQ-F13**: After the 07:00 scheduled crawl completes, notify the user when new posts were discovered for today's digest.
+- **REQ-F14**: Users can disable daily notifications separately from disabling the daily crawl.
 - **SEC-001**: Privacy — the only network calls allowed are fetches to user-saved sources. No analytics, telemetry, or third-party calls.
 - **SEC-002**: `host_permissions` kept as narrow as the distribution target allows (ADR-002).
 - **CON-001**: No backend, hosted API, or remote DB — ever. If a task seems to need one, stop and flag it.
@@ -82,7 +82,7 @@ Do not bundle multiple tasks into one commit; do not commit WIP that fails its v
 
 ## 2. Implementation Steps
 
-Tasks live in the per-phase plans linked in the **Phase Index** above. Each phase plan contains its own `Implementation Steps` table (TASK-XXX) with completion status and commit hashes. Phase 1 is complete (TASK-001–008); Phases 2–8 are pending.
+Tasks live in the per-phase plans linked in the **Phase Index** above. Each phase plan contains its own `Implementation Steps` table (TASK-XXX) with completion status and commit hashes. Phase 1 is complete (TASK-001–008); Phases 2–9 are pending.
 
 ## 3. Alternatives
 
@@ -91,10 +91,12 @@ Tasks live in the per-phase plans linked in the **Phase Index** above. Each phas
 - **ALT-003**: Jest as the test runner. Rejected in favor of Vitest for native Vite/ESM integration.
 - **ALT-004**: `optional_host_permissions` from day one. Deferred to optional Phase 8 — adds a per-origin prompt + denial UI not needed for personal/unpacked use.
 - **ALT-005**: Keep only the current day's posts (Q3 alternative). Rejected in favor of pruning to last 7 days.
+- **ALT-006**: Remote push notifications. Rejected because the extension remains fully local with no backend or remote services.
 
 ## 4. Dependencies
 
 - **DEP-001**: pnpm; **DEP-002**: vite + `@crxjs/vite-plugin`; **DEP-003**: typescript; **DEP-004**: react + react-dom; **DEP-005**: dexie + dexie-react-hooks; **DEP-006**: @types/chrome; **DEP-007**: vitest + @vitest/coverage-v8; **DEP-008**: jsdom; **DEP-009**: fake-indexeddb; **DEP-010**: @testing-library/react.
+- **DEP-011**: Chrome `notifications` permission/API for Phase 9 daily digest notifications.
 
 ## 5. Files
 
@@ -119,6 +121,7 @@ Per-phase tests are listed in each phase plan. Program-level targets:
 - **RISK-003**: SW killed mid-crawl → checkpoint queue in `chrome.storage.local`, resume.
 - **RISK-004**: crxjs/Vite version drift (v2.7.0 + Vite 8 emits a benign rolldown warning) → pin versions; verify unpacked load.
 - **RISK-005**: `<all_urls>` slows a future Web Store review → optional Phase 8 swaps to per-origin permissions.
+- **RISK-006**: Daily notifications become noisy → Phase 9 emits at most once per local day and adds a dedicated opt-out.
 - **ASSUMPTION-001**: Distribution is personal/unpacked for the MVP (Q2).
 - **ASSUMPTION-002**: Q1 = "5 random sources, newest each".
 - **ASSUMPTION-003**: History retention K = 7 days (Q3).

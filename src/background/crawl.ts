@@ -16,6 +16,7 @@ export interface CrawlSourceResult {
   ok: boolean
   sourceId: number
   postsWritten: number
+  newPostsWritten: number
   error?: string
 }
 
@@ -23,6 +24,7 @@ export interface CrawlAllResult {
   ok: true
   sourcesCrawled: number
   postsWritten: number
+  newPostsWritten: number
   failures: Array<{ sourceId: number; error: string }>
 }
 
@@ -49,7 +51,7 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
   try {
     const hasPermission = await ensureSourcePermission(persistedSource.id, persistedSource.url)
     if (!hasPermission) {
-      return { ok: true, sourceId: persistedSource.id, postsWritten: 0 }
+      return { ok: true, sourceId: persistedSource.id, postsWritten: 0, newPostsWritten: 0 }
     }
 
     const fetchedPage = cachedFeedUrl ? undefined : await fetchText(persistedSource.url)
@@ -70,16 +72,25 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
       }),
     )
 
+    let newPostsWritten = 0
     for (const post of posts) {
-      await upsertPost(post)
+      if (await upsertPost(post)) {
+        newPostsWritten += 1
+      }
     }
 
     await markSourceSuccess(persistedSource.id, now, feed?.url)
-    return { ok: true, sourceId: persistedSource.id, postsWritten: posts.length }
+    return { ok: true, sourceId: persistedSource.id, postsWritten: posts.length, newPostsWritten }
   } catch (e) {
     const message = errorMessage(e)
     await markSourceFailure(persistedSource.id, message)
-    return { ok: false, sourceId: persistedSource.id, postsWritten: 0, error: message }
+    return {
+      ok: false,
+      sourceId: persistedSource.id,
+      postsWritten: 0,
+      newPostsWritten: 0,
+      error: message,
+    }
   }
 }
 
@@ -101,6 +112,7 @@ export async function crawlAll(): Promise<CrawlAllResult> {
 
     let sourcesCrawled = 0
     let postsWritten = 0
+    let newPostsWritten = 0
     const failures: CrawlAllResult['failures'] = []
 
     while (queue.length > 0) {
@@ -112,6 +124,7 @@ export async function crawlAll(): Promise<CrawlAllResult> {
         const result = await crawlSource(source)
         sourcesCrawled += 1
         postsWritten += result.postsWritten
+        newPostsWritten += result.newPostsWritten
         if (!result.ok) {
           failures.push({
             sourceId,
@@ -130,7 +143,7 @@ export async function crawlAll(): Promise<CrawlAllResult> {
 
     await pruneOldPosts()
 
-    return { ok: true, sourcesCrawled, postsWritten, failures }
+    return { ok: true, sourcesCrawled, postsWritten, newPostsWritten, failures }
   } finally {
     await storageSet(CRAWL_IN_PROGRESS_KEY, false)
   }
@@ -147,6 +160,7 @@ export async function crawlSourceById(sourceId: number): Promise<CrawlSourceResu
       ok: false,
       sourceId,
       postsWritten: 0,
+      newPostsWritten: 0,
       error: `Source ${sourceId} was not found`,
     }
   }
@@ -258,12 +272,13 @@ function toPost({
   }
 }
 
-async function upsertPost(post: Post): Promise<void> {
+async function upsertPost(post: Post): Promise<boolean> {
   const existing = await db.posts.get({ postUrl: post.postUrl })
   await db.posts.put({
     ...post,
     ...(existing?.id !== undefined ? { id: existing.id } : {}),
   })
+  return existing === undefined
 }
 
 async function fetchText(url: string): Promise<FetchTextResult> {

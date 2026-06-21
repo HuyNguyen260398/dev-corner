@@ -45,6 +45,8 @@ export interface Post {
 export interface Settings {
   /** F7: crawl daily at 07:00 local time. */
   enableDailyCron: boolean
+  /** Phase 9: notify after the daily crawl when new posts are discovered. */
+  enableDailyNotifications: boolean
 }
 
 /** Requests sent from the popup / context menu to the service worker. */
@@ -65,6 +67,7 @@ export type WorkerResponse =
       sourceId?: number
       sourcesCrawled?: number
       postsWritten?: number
+      newPostsWritten?: number
       failures?: Array<{ sourceId: number; error: string }>
       settings?: Settings
       crawlInProgress?: boolean

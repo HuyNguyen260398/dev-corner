@@ -112,8 +112,29 @@ export function App() {
 
   async function setDailyCron(enableDailyCron: boolean) {
     setError(null)
-    setSettings((current) => ({ ...(current ?? { enableDailyCron }), enableDailyCron }))
+    setSettings((current) => ({
+      ...(current ?? { enableDailyCron, enableDailyNotifications: true }),
+      enableDailyCron,
+    }))
     const res = await send({ type: 'UPDATE_SETTINGS', settings: { enableDailyCron } })
+    if (res.ok && res.settings !== undefined) {
+      setSettings(res.settings)
+    } else if (!res.ok) {
+      setError(res.error)
+      await loadSchedulingState()
+    }
+  }
+
+  async function setDailyNotifications(enableDailyNotifications: boolean) {
+    setError(null)
+    setSettings((current) => ({
+      ...(current ?? { enableDailyCron: true, enableDailyNotifications }),
+      enableDailyNotifications,
+    }))
+    const res = await send({
+      type: 'UPDATE_SETTINGS',
+      settings: { enableDailyNotifications },
+    })
     if (res.ok && res.settings !== undefined) {
       setSettings(res.settings)
     } else if (!res.ok) {
@@ -180,6 +201,17 @@ export function App() {
           />
           <span aria-hidden="true" />
           <span>Daily 07:00 crawl</span>
+        </label>
+
+        <label className="schedule-toggle">
+          <input
+            type="checkbox"
+            checked={settings?.enableDailyNotifications ?? false}
+            disabled={settings === null}
+            onChange={(event) => void setDailyNotifications(event.currentTarget.checked)}
+          />
+          <span aria-hidden="true" />
+          <span>Daily notifications</span>
         </label>
 
         <DigestPreview

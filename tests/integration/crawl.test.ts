@@ -49,6 +49,7 @@ let clickListeners: ContextMenuClickListener[]
 let startupListeners: Array<() => void>
 let installedListeners: Array<() => void>
 let alarmListeners: Array<(alarm: chrome.alarms.Alarm) => void>
+let notificationClickListeners: Array<(notificationId: string) => void>
 let permissions: MockPermissions
 
 beforeEach(async () => {
@@ -76,7 +77,7 @@ describe('crawlSource', () => {
 
     const result = await crawlSource(source)
 
-    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 5 })
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 5, newPostsWritten: 5 })
     const posts = await db.posts.orderBy('publishedAt').reverse().toArray()
     expect(posts).toHaveLength(5)
     expect(posts[0]).toMatchObject({
@@ -106,7 +107,7 @@ describe('crawlSource', () => {
 
     const result = await crawlSource(source)
 
-    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 5 })
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 5, newPostsWritten: 5 })
     expect(await db.posts.count()).toBe(5)
   })
 
@@ -117,9 +118,21 @@ describe('crawlSource', () => {
     })
     const source = await addSourceRow('https://blog.example.com/')
 
-    await crawlSource(source)
-    await crawlSource({ ...source, feedUrl: 'https://blog.example.com/feed.xml' })
+    const firstResult = await crawlSource(source)
+    const secondResult = await crawlSource({ ...source, feedUrl: 'https://blog.example.com/feed.xml' })
 
+    expect(firstResult).toEqual({
+      ok: true,
+      sourceId: source.id,
+      postsWritten: 5,
+      newPostsWritten: 5,
+    })
+    expect(secondResult).toEqual({
+      ok: true,
+      sourceId: source.id,
+      postsWritten: 5,
+      newPostsWritten: 0,
+    })
     expect(await db.posts.count()).toBe(5)
   })
 
@@ -137,7 +150,7 @@ describe('crawlSource', () => {
 
     const result = await crawlSource(source)
 
-    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 1 })
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 1, newPostsWritten: 1 })
     await expect(db.posts.toArray()).resolves.toMatchObject([
       {
         sourceId: source.id,
@@ -186,6 +199,7 @@ describe('crawlSource', () => {
       ok: false,
       sourceId: source.id,
       postsWritten: 0,
+      newPostsWritten: 0,
       error: 'network down',
     })
     await expect(db.sources.get(source.id)).resolves.toMatchObject({
@@ -208,7 +222,7 @@ describe('crawlSource', () => {
 
     const result = await crawlSource(source)
 
-    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 0 })
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 0, newPostsWritten: 0 })
     expect(fetchMock).not.toHaveBeenCalled()
     await expect(db.sources.get(source.id)).resolves.toMatchObject({
       permissionState: 'needsPermission',
@@ -227,7 +241,13 @@ describe('crawlAll', () => {
 
     const result = await crawlAll()
 
-    expect(result).toEqual({ ok: true, sourcesCrawled: 1, postsWritten: 5, failures: [] })
+    expect(result).toEqual({
+      ok: true,
+      sourcesCrawled: 1,
+      postsWritten: 5,
+      newPostsWritten: 5,
+      failures: [],
+    })
     expect(await db.posts.count()).toBe(5)
     expect(storage.values[CRAWL_QUEUE_KEY]).toBeUndefined()
   })
@@ -266,7 +286,13 @@ describe('crawlAll', () => {
 
     const result = await crawlAll()
 
-    expect(result).toEqual({ ok: true, sourcesCrawled: 1, postsWritten: 5, failures: [] })
+    expect(result).toEqual({
+      ok: true,
+      sourcesCrawled: 1,
+      postsWritten: 5,
+      newPostsWritten: 5,
+      failures: [],
+    })
     expect(await db.posts.count()).toBe(5)
     expect(storage.values[CRAWL_QUEUE_KEY]).toBeUndefined()
   })
@@ -384,6 +410,7 @@ describe('worker crawl wiring', () => {
       ok: true,
       sourcesCrawled: 1,
       postsWritten: 5,
+      newPostsWritten: 5,
       failures: [],
     })
     expect(await db.posts.count()).toBe(5)
@@ -439,7 +466,7 @@ describe('worker crawl wiring', () => {
       }),
     ).resolves.toEqual({
       ok: true,
-      settings: { enableDailyCron: false },
+      settings: { enableDailyCron: false, enableDailyNotifications: true },
     })
     expect(chrome.alarms.clear).toHaveBeenCalledWith('daily-0700-crawl', expect.any(Function))
   })
@@ -458,12 +485,80 @@ describe('worker crawl wiring', () => {
     await vi.waitFor(async () => {
       expect(await db.posts.count()).toBe(5)
     })
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      'daily-digest-2026-06-20',
+      {
+        type: 'basic',
+        iconUrl: 'icons/icon-128.png',
+        title: 'dev-corner digest',
+        message: '5 new posts are ready in your 5-post digest.',
+      },
+      expect.any(Function),
+    )
+    expect(storage.values.lastDigestNotificationDate).toBe('2026-06-20')
     expect(chrome.alarms.create).toHaveBeenCalledWith('daily-0700-crawl', {
       when: new Date(2026, 5, 21, 7, 0, 0).getTime(),
     })
   })
 
-  it('returns persisted settings and crawl status over typed messages', async () => {
+  it('does not create a second daily notification on the same local day', async () => {
+    vi.mocked(Date.now).mockReturnValue(new Date(2026, 5, 20, 7, 0, 0).getTime())
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    await addSourceRow('https://blog.example.com/')
+    await import('../../src/background/index')
+    const alarm = { name: 'daily-0700-crawl', scheduledTime: Date.now() }
+
+    expectAlarmListener()(alarm)
+    await vi.waitFor(() => {
+      expect(chrome.notifications.create).toHaveBeenCalledTimes(1)
+    })
+
+    expectAlarmListener()(alarm)
+    await vi.waitFor(() => {
+      expect(chrome.alarms.create).toHaveBeenCalledTimes(2)
+    })
+    expect(chrome.notifications.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not notify after a manual crawl refresh', async () => {
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    await addSourceRow('https://blog.example.com/')
+    await import('../../src/background/index')
+    const listener = expectMessageListener()
+
+    await expect(sendWorkerMessage(listener, { type: 'CRAWL_ALL' })).resolves.toMatchObject({
+      ok: true,
+      newPostsWritten: 5,
+    })
+    expect(chrome.notifications.create).not.toHaveBeenCalled()
+  })
+
+  it('does not notify when daily notifications are disabled', async () => {
+    storage.values.settings = { enableDailyCron: true, enableDailyNotifications: false }
+    vi.mocked(Date.now).mockReturnValue(new Date(2026, 5, 20, 7, 0, 0).getTime())
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    await addSourceRow('https://blog.example.com/')
+    await import('../../src/background/index')
+
+    expectAlarmListener()({ name: 'daily-0700-crawl', scheduledTime: Date.now() })
+
+    await vi.waitFor(async () => {
+      expect(await db.posts.count()).toBe(5)
+    })
+    expect(chrome.notifications.create).not.toHaveBeenCalled()
+    expect(storage.values.lastDigestNotificationDate).toBeUndefined()
+  })
+
+  it('returns persisted settings with notification defaults and crawl status over typed messages', async () => {
     storage.values.settings = { enableDailyCron: false }
     storage.values.crawlInProgress = true
     await import('../../src/background/index')
@@ -471,11 +566,52 @@ describe('worker crawl wiring', () => {
 
     await expect(sendWorkerMessage(listener, { type: 'GET_SETTINGS' })).resolves.toEqual({
       ok: true,
-      settings: { enableDailyCron: false },
+      settings: { enableDailyCron: false, enableDailyNotifications: true },
     })
     await expect(sendWorkerMessage(listener, { type: 'GET_CRAWL_STATUS' })).resolves.toEqual({
       ok: true,
       crawlInProgress: true,
+    })
+  })
+})
+
+describe('background notifications', () => {
+  it('creates a daily digest notification and persists same-day dedupe state', async () => {
+    const { createDailyDigestNotification, LAST_DIGEST_NOTIFICATION_DATE_KEY } = await import(
+      '../../src/background/notifications'
+    )
+
+    await createDailyDigestNotification({
+      newPostCount: 3,
+      digestCount: 5,
+      dateKey: '2026-06-21',
+    })
+
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      'daily-digest-2026-06-21',
+      {
+        type: 'basic',
+        iconUrl: 'icons/icon-128.png',
+        title: 'dev-corner digest',
+        message: '3 new posts are ready in your 5-post digest.',
+      },
+      expect.any(Function),
+    )
+    expect(storage.values[LAST_DIGEST_NOTIFICATION_DATE_KEY]).toBe('2026-06-21')
+  })
+
+  it('opens the digest surface when a daily notification is clicked', async () => {
+    const { registerNotificationClickHandler } = await import('../../src/background/notifications')
+
+    registerNotificationClickHandler()
+    const listener = notificationClickListeners[0]
+    if (listener === undefined) throw new Error('Expected a notification click listener')
+    listener('daily-digest-2026-06-21')
+
+    await vi.waitFor(() => {
+      expect(chrome.tabs.create).toHaveBeenCalledWith({
+        url: 'chrome-extension://dev-corner/src/popup/index.html',
+      })
     })
   })
 })
@@ -534,6 +670,7 @@ function installChromeMock(): MockStorageArea {
   startupListeners = []
   installedListeners = []
   alarmListeners = []
+  notificationClickListeners = []
   permissions = {
     contains: vi.fn(
       (_request: chrome.permissions.Permissions, callback: (result: boolean) => void) => {
@@ -553,6 +690,7 @@ function installChromeMock(): MockStorageArea {
       onInstalled: listenerSlot(installedListeners),
       onStartup: listenerSlot(startupListeners),
       onMessage: listenerSlot(messageListeners),
+      getURL: vi.fn((path: string) => `chrome-extension://dev-corner/${path}`),
     },
     alarms: {
       create: vi.fn(),
@@ -563,6 +701,20 @@ function installChromeMock(): MockStorageArea {
       create: vi.fn(),
       onClicked: listenerSlot(clickListeners),
     },
+    notifications: {
+      create: vi.fn(
+        (
+          _notificationId: string,
+          _options: chrome.notifications.NotificationCreateOptions,
+          callback?: (notificationId: string) => void,
+        ) => callback?.(_notificationId),
+      ),
+      onClicked: listenerSlot(notificationClickListeners),
+    },
+    tabs: {
+      create: vi.fn(),
+    },
+    action: {},
     permissions,
   })
   return area
