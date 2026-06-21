@@ -120,8 +120,19 @@ chrome.alarms.getAll(console.log)
 // Inspect persisted queue / progress
 chrome.storage.local.get(null, console.log)
 
-// Send a message to the worker (e.g. trigger a manual refresh)
-chrome.runtime.sendMessage({ type: 'REFRESH_NOW' }, console.log)
+// Trigger a manual crawl of all saved sources.
+chrome.runtime.sendMessage({ type: 'CRAWL_ALL' }, console.log)
+
+// Expected response shape:
+// { ok: true, sourcesCrawled: 1, postsWritten: 5, failures: [] }
+
+// Crawl one known source by id.
+chrome.runtime.sendMessage({ type: 'CRAWL_SOURCE', sourceId: 1 }, console.log)
+
+// If a stale crawl queue is blocking manual testing, clear it and crawl again.
+chrome.storage.local.remove('crawlQueue', () => {
+  chrome.runtime.sendMessage({ type: 'CRAWL_ALL' }, console.log)
+})
 ```
 
 > Use the typed message shapes from `src/lib/types.ts` — don't invent ad-hoc
