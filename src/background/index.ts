@@ -2,7 +2,9 @@
 // Here we register the "Save to dev-corner" context menu (F12), save through the
 // shared src/lib/sources path, and trigger background-only crawling. No in-memory
 // state is relied upon between events (CON-002).
-import { crawlAll, crawlSourceById } from './crawl'
+import { crawlAll, crawlSourceById, isCrawlInProgress } from './crawl'
+import { configureDailyAlarm, handleDailyAlarm } from './scheduler'
+import { getSettings, updateSettings } from './settings'
 import { addSource, deleteSource } from '../lib/sources'
 import type { WorkerRequest, WorkerResponse } from '../lib/types'
 
@@ -16,6 +18,16 @@ chrome.runtime.onInstalled.addListener(() => {
     title: 'Save to dev-corner',
     contexts: ['page', 'link'],
   })
+  void configureDailyAlarm().catch(() => undefined)
+})
+
+chrome.runtime.onStartup.addListener(() => {
+  void crawlAll().catch(() => undefined)
+  void configureDailyAlarm().catch(() => undefined)
+})
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  void handleDailyAlarm(alarm).catch(() => undefined)
 })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -64,6 +76,24 @@ chrome.runtime.onMessage.addListener(
       case 'CRAWL_ALL':
         crawlAll()
           .then((result) => sendResponse(result))
+          .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
+        return true
+      case 'GET_SETTINGS':
+        getSettings()
+          .then((settings) => sendResponse({ ok: true, settings }))
+          .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
+        return true
+      case 'UPDATE_SETTINGS':
+        updateSettings(message.settings)
+          .then(async (settings) => {
+            await configureDailyAlarm()
+            sendResponse({ ok: true, settings })
+          })
+          .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
+        return true
+      case 'GET_CRAWL_STATUS':
+        isCrawlInProgress()
+          .then((crawlInProgress) => sendResponse({ ok: true, crawlInProgress }))
           .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
         return true
     }

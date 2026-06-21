@@ -49,6 +49,9 @@ export type WorkerRequest =
   | { type: 'CRAWL_SOURCE'; sourceId: number }
   | { type: 'SAVE_SOURCE'; url: string; title?: string }
   | { type: 'DELETE_SOURCE'; sourceId: number }
+  | { type: 'GET_SETTINGS' }
+  | { type: 'UPDATE_SETTINGS'; settings: Partial<Settings> }
+  | { type: 'GET_CRAWL_STATUS' }
 
 /** Responses returned by the service worker, discriminated on `ok`. */
 export type WorkerResponse =
@@ -58,5 +61,7 @@ export type WorkerResponse =
       sourcesCrawled?: number
       postsWritten?: number
       failures?: Array<{ sourceId: number; error: string }>
+      settings?: Settings
+      crawlInProgress?: boolean
     }
   | { ok: false; error: string }

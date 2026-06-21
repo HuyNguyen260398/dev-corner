@@ -6,6 +6,7 @@ import { resolveThumbnail } from '../lib/thumbnail'
 import type { Post, Source } from '../lib/types'
 
 export const CRAWL_QUEUE_KEY = 'crawlQueue'
+export const CRAWL_IN_PROGRESS_KEY = 'crawlInProgress'
 
 const MAX_POSTS_PER_SOURCE = 5
 
@@ -77,47 +78,57 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
 
 /** Crawl all saved sources, resuming an existing storage-backed queue if present. */
 export async function crawlAll(): Promise<CrawlAllResult> {
-  let queue = await storageGet<number[]>(CRAWL_QUEUE_KEY)
-  if (queue === undefined || queue.length === 0) {
-    const sources = await db.sources.toArray()
-    queue = sources.flatMap((source) => (source.id == null ? [] : [source.id]))
-    if (queue.length > 0) {
-      await storageSet(CRAWL_QUEUE_KEY, queue)
-    } else {
-      await storageRemove(CRAWL_QUEUE_KEY)
-    }
-  }
+  await storageSet(CRAWL_IN_PROGRESS_KEY, true)
 
-  let sourcesCrawled = 0
-  let postsWritten = 0
-  const failures: CrawlAllResult['failures'] = []
-
-  while (queue.length > 0) {
-    const sourceId = queue[0]
-    if (sourceId === undefined) break
-
-    const source = await db.sources.get(sourceId)
-    if (source !== undefined) {
-      const result = await crawlSource(source)
-      sourcesCrawled += 1
-      postsWritten += result.postsWritten
-      if (!result.ok) {
-        failures.push({
-          sourceId,
-          error: result.error ?? 'Crawl failed',
-        })
+  try {
+    let queue = await storageGet<number[]>(CRAWL_QUEUE_KEY)
+    if (queue === undefined || queue.length === 0) {
+      const sources = await db.sources.toArray()
+      queue = sources.flatMap((source) => (source.id == null ? [] : [source.id]))
+      if (queue.length > 0) {
+        await storageSet(CRAWL_QUEUE_KEY, queue)
+      } else {
+        await storageRemove(CRAWL_QUEUE_KEY)
       }
     }
 
-    queue = queue.slice(1)
-    if (queue.length > 0) {
-      await storageSet(CRAWL_QUEUE_KEY, queue)
-    } else {
-      await storageRemove(CRAWL_QUEUE_KEY)
-    }
-  }
+    let sourcesCrawled = 0
+    let postsWritten = 0
+    const failures: CrawlAllResult['failures'] = []
 
-  return { ok: true, sourcesCrawled, postsWritten, failures }
+    while (queue.length > 0) {
+      const sourceId = queue[0]
+      if (sourceId === undefined) break
+
+      const source = await db.sources.get(sourceId)
+      if (source !== undefined) {
+        const result = await crawlSource(source)
+        sourcesCrawled += 1
+        postsWritten += result.postsWritten
+        if (!result.ok) {
+          failures.push({
+            sourceId,
+            error: result.error ?? 'Crawl failed',
+          })
+        }
+      }
+
+      queue = queue.slice(1)
+      if (queue.length > 0) {
+        await storageSet(CRAWL_QUEUE_KEY, queue)
+      } else {
+        await storageRemove(CRAWL_QUEUE_KEY)
+      }
+    }
+
+    return { ok: true, sourcesCrawled, postsWritten, failures }
+  } finally {
+    await storageSet(CRAWL_IN_PROGRESS_KEY, false)
+  }
+}
+
+export async function isCrawlInProgress(): Promise<boolean> {
+  return (await storageGet<boolean>(CRAWL_IN_PROGRESS_KEY)) ?? false
 }
 
 export async function crawlSourceById(sourceId: number): Promise<CrawlSourceResult> {
