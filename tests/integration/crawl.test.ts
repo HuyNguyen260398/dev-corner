@@ -49,6 +49,7 @@ let clickListeners: ContextMenuClickListener[]
 let startupListeners: Array<() => void>
 let installedListeners: Array<() => void>
 let alarmListeners: Array<(alarm: chrome.alarms.Alarm) => void>
+let notificationClickListeners: Array<(notificationId: string) => void>
 let permissions: MockPermissions
 
 beforeEach(async () => {
@@ -506,6 +507,47 @@ describe('worker crawl wiring', () => {
   })
 })
 
+describe('background notifications', () => {
+  it('creates a daily digest notification and persists same-day dedupe state', async () => {
+    const { createDailyDigestNotification, LAST_DIGEST_NOTIFICATION_DATE_KEY } = await import(
+      '../../src/background/notifications'
+    )
+
+    await createDailyDigestNotification({
+      newPostCount: 3,
+      digestCount: 5,
+      dateKey: '2026-06-21',
+    })
+
+    expect(chrome.notifications.create).toHaveBeenCalledWith(
+      'daily-digest-2026-06-21',
+      {
+        type: 'basic',
+        iconUrl: 'icons/icon-128.png',
+        title: 'dev-corner digest',
+        message: '3 new posts are ready in your 5-post digest.',
+      },
+      expect.any(Function),
+    )
+    expect(storage.values[LAST_DIGEST_NOTIFICATION_DATE_KEY]).toBe('2026-06-21')
+  })
+
+  it('opens the digest surface when a daily notification is clicked', async () => {
+    const { registerNotificationClickHandler } = await import('../../src/background/notifications')
+
+    registerNotificationClickHandler()
+    const listener = notificationClickListeners[0]
+    if (listener === undefined) throw new Error('Expected a notification click listener')
+    listener('daily-digest-2026-06-21')
+
+    await vi.waitFor(() => {
+      expect(chrome.tabs.create).toHaveBeenCalledWith({
+        url: 'chrome-extension://dev-corner/src/popup/index.html',
+      })
+    })
+  })
+})
+
 async function addSourceRow(url: string): Promise<Source & { id: number }> {
   const id = await db.sources.add({ url, title: url, addedAt: Date.now() })
   return { id, url, title: url, addedAt: Date.now() }
@@ -560,6 +602,7 @@ function installChromeMock(): MockStorageArea {
   startupListeners = []
   installedListeners = []
   alarmListeners = []
+  notificationClickListeners = []
   permissions = {
     contains: vi.fn(
       (_request: chrome.permissions.Permissions, callback: (result: boolean) => void) => {
@@ -579,6 +622,7 @@ function installChromeMock(): MockStorageArea {
       onInstalled: listenerSlot(installedListeners),
       onStartup: listenerSlot(startupListeners),
       onMessage: listenerSlot(messageListeners),
+      getURL: vi.fn((path: string) => `chrome-extension://dev-corner/${path}`),
     },
     alarms: {
       create: vi.fn(),
@@ -589,6 +633,20 @@ function installChromeMock(): MockStorageArea {
       create: vi.fn(),
       onClicked: listenerSlot(clickListeners),
     },
+    notifications: {
+      create: vi.fn(
+        (
+          _notificationId: string,
+          _options: chrome.notifications.NotificationOptions<true>,
+          callback?: (notificationId: string) => void,
+        ) => callback?.(_notificationId),
+      ),
+      onClicked: listenerSlot(notificationClickListeners),
+    },
+    tabs: {
+      create: vi.fn(),
+    },
+    action: {},
     permissions,
   })
   return area

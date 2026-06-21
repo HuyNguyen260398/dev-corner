@@ -3,6 +3,7 @@
 // shared src/lib/sources path, and trigger background-only crawling. No in-memory
 // state is relied upon between events (CON-002).
 import { crawlAll, crawlSourceById, isCrawlInProgress } from './crawl'
+import { registerNotificationClickHandler } from './notifications'
 import {
   markSourcePermissionResult,
   requestAndMarkSourcePermission,
@@ -14,6 +15,8 @@ import { addSource, deleteSource } from '../lib/sources'
 import type { WorkerRequest, WorkerResponse } from '../lib/types'
 
 const SAVE_MENU_ID = 'dev-corner-save'
+
+registerNotificationClickHandler()
 
 // Context menus are registered fresh on install/update (they do not persist across
 // extension reloads). 'page' saves the current tab; 'link' saves a right-clicked link.
