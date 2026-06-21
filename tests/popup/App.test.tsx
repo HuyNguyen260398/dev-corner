@@ -119,6 +119,32 @@ describe('App digest preview', () => {
   })
 })
 
+describe('App source permissions', () => {
+  it('surfaces denied source permission and lets the user re-request it', async () => {
+    await db.sources.add(source(1, { permissionState: 'needsPermission' }))
+    responses.REQUEST_SOURCE_PERMISSION = {
+      ok: true,
+      permissionGranted: true,
+    }
+
+    render(<App />)
+
+    const sourceItem = await screen.findByText('Source 1')
+    const sourceRow = sourceItem.closest('li')
+    expect(sourceRow).not.toBeNull()
+    expect(within(sourceRow!).getByText('Needs permission')).toBeTruthy()
+
+    fireEvent.click(within(sourceRow!).getByRole('button', { name: 'Grant permission' }))
+
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'REQUEST_SOURCE_PERMISSION',
+        sourceId: 1,
+      })
+    })
+  })
+})
+
 function sources(count: number): Source[] {
   return Array.from({ length: count }, (_value, index) => source(index + 1))
 }

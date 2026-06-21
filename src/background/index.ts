@@ -3,6 +3,7 @@
 // shared src/lib/sources path, and trigger background-only crawling. No in-memory
 // state is relied upon between events (CON-002).
 import { crawlAll, crawlSourceById, isCrawlInProgress } from './crawl'
+import { requestAndMarkSourcePermission, requestStoredSourcePermission } from './permissions'
 import { configureDailyAlarm, handleDailyAlarm } from './scheduler'
 import { getSettings, updateSettings } from './settings'
 import { addSource, deleteSource } from '../lib/sources'
@@ -37,8 +38,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   const url = info.linkUrl ?? info.pageUrl ?? tab?.url
   if (!url) return
   const title = info.linkUrl ? undefined : tab?.title
-  void addSource(url, title)
-    .then((sourceId) => crawlSourceById(sourceId))
+  void saveSourceWithPermission(url, title, true)
     .catch(() => undefined)
 })
 
@@ -53,13 +53,25 @@ chrome.runtime.onMessage.addListener(
   (message: WorkerRequest, _sender, sendResponse: (response: WorkerResponse) => void) => {
     switch (message.type) {
       case 'SAVE_SOURCE':
-        addSource(message.url, message.title)
-          .then((sourceId) => sendResponse({ ok: true, sourceId }))
+        saveSourceWithPermission(message.url, message.title, false)
+          .then(({ sourceId, permissionGranted }) =>
+            sendResponse({ ok: true, sourceId, permissionGranted }),
+          )
           .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
         return true
       case 'DELETE_SOURCE':
         deleteSource(message.sourceId)
           .then(() => sendResponse({ ok: true }))
+          .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
+        return true
+      case 'REQUEST_SOURCE_PERMISSION':
+        requestStoredSourcePermission(message.sourceId)
+          .then(async (permissionGranted) => {
+            if (permissionGranted) {
+              await crawlSourceById(message.sourceId)
+            }
+            sendResponse({ ok: true, sourceId: message.sourceId, permissionGranted })
+          })
           .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
         return true
       case 'CRAWL_SOURCE':
@@ -104,4 +116,17 @@ chrome.runtime.onMessage.addListener(
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled worker request: ${JSON.stringify(value)}`)
+}
+
+async function saveSourceWithPermission(
+  url: string,
+  title: string | undefined,
+  crawlAfterGrant: boolean,
+): Promise<{ sourceId: number; permissionGranted: boolean }> {
+  const sourceId = await addSource(url, title)
+  const permissionGranted = await requestAndMarkSourcePermission(sourceId, url)
+  if (permissionGranted && crawlAfterGrant) {
+    await crawlSourceById(sourceId)
+  }
+  return { sourceId, permissionGranted }
 }

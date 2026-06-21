@@ -7,9 +7,9 @@ const extensionIcons = {
   128: 'icons/icon-128.png',
 }
 
-// MV3 manifest. host_permissions is <all_urls> for personal/unpacked use (ADR-002);
-// a public Web Store listing would swap to per-origin optional_host_permissions
-// (plan Phase 8). The service worker is the only crawling context.
+// MV3 manifest. Public Web Store builds use per-origin optional host grants
+// requested at save time (ADR-002 Option B). The service worker is the only
+// crawling context.
 export default defineManifest({
   manifest_version: 3,
   name: 'dev-corner',
@@ -18,7 +18,7 @@ export default defineManifest({
     'Crawls your saved blog sources and shows a daily 5-post reading digest. Fully local.',
   icons: extensionIcons,
   permissions: ['storage', 'alarms', 'contextMenus', 'notifications'],
-  host_permissions: ['<all_urls>'],
+  optional_host_permissions: ['http://*/*', 'https://*/*'],
   background: {
     service_worker: 'src/background/index.ts',
     type: 'module',

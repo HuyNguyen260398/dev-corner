@@ -15,6 +15,11 @@ interface MockStorageArea {
   remove: ReturnType<typeof vi.fn>
 }
 
+interface MockPermissions {
+  contains: ReturnType<typeof vi.fn>
+  request: ReturnType<typeof vi.fn>
+}
+
 interface ListenerSlot<T extends (...args: never[]) => unknown> {
   listeners: T[]
   addListener: (listener: T) => void
@@ -44,6 +49,7 @@ let clickListeners: ContextMenuClickListener[]
 let startupListeners: Array<() => void>
 let installedListeners: Array<() => void>
 let alarmListeners: Array<(alarm: chrome.alarms.Alarm) => void>
+let permissions: MockPermissions
 
 beforeEach(async () => {
   vi.resetModules()
@@ -187,6 +193,27 @@ describe('crawlSource', () => {
     })
     expect(await db.posts.count()).toBe(0)
   })
+
+  it('skips fetches and marks the source when origin permission is missing', async () => {
+    permissions.contains.mockImplementation(
+      (_request: chrome.permissions.Permissions, callback: (result: boolean) => void) => {
+        callback(false)
+      },
+    )
+    const fetchMock = installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    const source = await addSourceRow('https://blog.example.com/')
+
+    const result = await crawlSource(source)
+
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 0 })
+    expect(fetchMock).not.toHaveBeenCalled()
+    await expect(db.sources.get(source.id)).resolves.toMatchObject({
+      permissionState: 'needsPermission',
+    })
+  })
 })
 
 describe('crawlAll', () => {
@@ -246,6 +273,67 @@ describe('crawlAll', () => {
 })
 
 describe('worker crawl wiring', () => {
+  it('requests an origin grant on source save and records denial without crawling', async () => {
+    permissions.request.mockImplementation(
+      (_request: chrome.permissions.Permissions, callback: (granted: boolean) => void) => {
+        callback(false)
+      },
+    )
+    const fetchMock = installFetchMock({
+      'https://denied.example.com/': pageWithFeed,
+      'https://denied.example.com/feed.xml': rss,
+    })
+    await import('../../src/background/index')
+    const listener = expectMessageListener()
+
+    const response = await sendWorkerMessage(listener, {
+      type: 'SAVE_SOURCE',
+      url: 'https://denied.example.com/',
+      title: 'Denied Blog',
+    })
+
+    expect(response).toMatchObject({ ok: true, permissionGranted: false })
+    expect(permissions.request).toHaveBeenCalledWith(
+      { origins: ['https://denied.example.com/*'] },
+      expect.any(Function),
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+    await expect(db.sources.get({ url: 'https://denied.example.com/' })).resolves.toMatchObject({
+      title: 'Denied Blog',
+      permissionState: 'needsPermission',
+    })
+  })
+
+  it('re-requests permission and crawls the source after a grant', async () => {
+    permissions.request.mockImplementation(
+      (_request: chrome.permissions.Permissions, callback: (granted: boolean) => void) => {
+        callback(true)
+      },
+    )
+    installFetchMock({
+      'https://denied.example.com/': pageWithFeed,
+      'https://denied.example.com/feed.xml': rss,
+    })
+    const source = await addSourceRow('https://denied.example.com/')
+    await db.sources.update(source.id, { permissionState: 'needsPermission' })
+    await import('../../src/background/index')
+    const listener = expectMessageListener()
+
+    await expect(
+      sendWorkerMessage(listener, {
+        type: 'REQUEST_SOURCE_PERMISSION',
+        sourceId: source.id,
+      }),
+    ).resolves.toMatchObject({ ok: true, permissionGranted: true })
+
+    await vi.waitFor(async () => {
+      expect(await db.posts.count()).toBe(5)
+    })
+    await expect(db.sources.get(source.id)).resolves.toMatchObject({
+      permissionState: 'granted',
+    })
+  })
+
   it('handles CRAWL_SOURCE / CRAWL_ALL messages and crawls after a context-menu save', async () => {
     installFetchMock({
       'https://blog.example.com/': pageWithFeed,
@@ -419,6 +507,18 @@ function installChromeMock(): MockStorageArea {
   startupListeners = []
   installedListeners = []
   alarmListeners = []
+  permissions = {
+    contains: vi.fn(
+      (_request: chrome.permissions.Permissions, callback: (result: boolean) => void) => {
+        callback(true)
+      },
+    ),
+    request: vi.fn(
+      (_request: chrome.permissions.Permissions, callback: (granted: boolean) => void) => {
+        callback(true)
+      },
+    ),
+  }
 
   vi.stubGlobal('chrome', {
     storage: { local: area },
@@ -436,6 +536,7 @@ function installChromeMock(): MockStorageArea {
       create: vi.fn(),
       onClicked: listenerSlot(clickListeners),
     },
+    permissions,
   })
   return area
 }

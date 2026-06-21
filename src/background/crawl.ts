@@ -5,6 +5,7 @@ import { pruneOldPosts } from '../lib/prune'
 import { summarize } from '../lib/summary'
 import { resolveThumbnail } from '../lib/thumbnail'
 import type { Post, Source } from '../lib/types'
+import { ensureSourcePermission } from './permissions'
 
 export const CRAWL_QUEUE_KEY = 'crawlQueue'
 export const CRAWL_IN_PROGRESS_KEY = 'crawlInProgress'
@@ -46,6 +47,11 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
   const cachedFeedUrl = sameOriginUrl(source.feedUrl, source.url)
 
   try {
+    const hasPermission = await ensureSourcePermission(persistedSource.id, persistedSource.url)
+    if (!hasPermission) {
+      return { ok: true, sourceId: persistedSource.id, postsWritten: 0 }
+    }
+
     const fetchedPage = cachedFeedUrl ? undefined : await fetchText(persistedSource.url)
     const feed = await resolveFeed(persistedSource, fetchedPage, cachedFeedUrl)
     const entries =

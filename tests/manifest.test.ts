@@ -12,6 +12,16 @@ type ReleaseIconManifest = {
 }
 
 describe('manifest release assets', () => {
+  it('uses optional per-origin host permissions for Web Store least privilege', async () => {
+    const resolvedManifest = (await manifest) as {
+      host_permissions?: string[]
+      optional_host_permissions?: string[]
+    }
+
+    expect(resolvedManifest.host_permissions).toBeUndefined()
+    expect(resolvedManifest.optional_host_permissions).toEqual(['http://*/*', 'https://*/*'])
+  })
+
   it('references packaged extension icons for Chrome and the toolbar action', async () => {
     const resolvedManifest = (await manifest) as ReleaseIconManifest
 
