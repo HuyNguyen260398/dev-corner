@@ -381,8 +381,13 @@ function SourceList({
             <span className="source-favicon" aria-hidden="true">
               {sourceInitial(source)}
             </span>
-            <span className="source-title" title={source.url}>
-              {source.title}
+            <span className="source-copy">
+              <span className="source-title" title={source.url}>
+                {source.title}
+              </span>
+              <span className="source-url" title={source.url}>
+                {source.url}
+              </span>
             </span>
             {source.permissionState === 'needsPermission' && (
               <>

@@ -214,6 +214,17 @@ describe('App source permissions', () => {
     expect(sourceRow).not.toBeNull()
     expect(within(sourceRow!).getByRole('button', { name: 'Unsubscribe Source 1' })).toBeTruthy()
   })
+
+  it('shows the saved source URL under the source name', async () => {
+    await db.sources.add(source(1))
+
+    render(<App />)
+
+    const sourceItem = await screen.findByText('Source 1')
+    const sourceRow = sourceItem.closest('li')
+    expect(sourceRow).not.toBeNull()
+    expect(within(sourceRow!).getByText('https://source-1.test')).toBeTruthy()
+  })
 })
 
 function sources(count: number): Source[] {

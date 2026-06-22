@@ -511,15 +511,32 @@ h2 {
   font-size: 12px;
 }
 
-.source-title {
+.source-copy {
+  display: flex;
   min-width: 0;
   flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.source-title,
+.source-url {
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-title {
   color: #e2e8f0;
   font-size: 13px;
   font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.source-url {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.25;
 }
 
 .permission-chip {
