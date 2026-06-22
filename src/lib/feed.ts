@@ -59,7 +59,8 @@ function parseRssItem(item: Element): FeedEntry | null {
   const postUrl = childText(item, 'link')
   if (!postUrl) return null
 
-  const html = childText(item, 'description')
+  const descriptionHtml = childText(item, 'description')
+  const contentHtml = childText(item, 'content:encoded')
   const feedMedia =
     attrOf(item, 'media:thumbnail', 'url') ??
     attrOf(item, 'media:content', 'url') ??
@@ -68,7 +69,8 @@ function parseRssItem(item: Element): FeedEntry | null {
   return makeEntry({
     title: childText(item, 'title'),
     postUrl,
-    html,
+    html: descriptionHtml || contentHtml,
+    thumbnailHtml: contentHtml || descriptionHtml,
     feedMedia,
     dateText: childText(item, 'pubDate'),
   })
@@ -85,6 +87,7 @@ function parseAtomEntry(entry: Element): FeedEntry | null {
     title: childText(entry, 'title'),
     postUrl,
     html,
+    thumbnailHtml: html,
     feedMedia,
     dateText: childText(entry, 'published') || childText(entry, 'updated'),
   })
@@ -94,14 +97,15 @@ function makeEntry(opts: {
   title: string
   postUrl: string
   html: string
+  thumbnailHtml: string
   feedMedia: string | undefined
   dateText: string
 }): FeedEntry {
   const publishedAt = parseDate(opts.dateText)
   const candidates =
     opts.feedMedia !== undefined
-      ? { feedMedia: opts.feedMedia, contentHtml: opts.html }
-      : { contentHtml: opts.html }
+      ? { feedMedia: opts.feedMedia, contentHtml: opts.thumbnailHtml, baseUrl: opts.postUrl }
+      : { contentHtml: opts.thumbnailHtml, baseUrl: opts.postUrl }
 
   return {
     title: opts.title.trim() || 'Untitled',

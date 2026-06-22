@@ -165,6 +165,79 @@ describe('crawlSource', () => {
     ])
   })
 
+  it('enriches feed entries with post Open Graph images when the feed has no image', async () => {
+    const fetchMock = installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': `<?xml version="1.0"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>Feed post without media</title>
+            <link>/post-with-og-image</link>
+            <description><![CDATA[<p>Feed summary without an image.</p>]]></description>
+            <pubDate>Fri, 20 Jun 2026 09:00:00 GMT</pubDate>
+          </item>
+        </channel></rss>`,
+      'https://blog.example.com/post-with-og-image': `<!doctype html>
+        <html><head>
+          <meta property="og:image" content="/covers/post-with-og-image.png" />
+        </head><body><h1>Feed post without media</h1></body></html>`,
+    })
+    const source = await addSourceRow('https://blog.example.com/')
+
+    await expect(crawlSource(source)).resolves.toMatchObject({
+      ok: true,
+      postsWritten: 1,
+      newPostsWritten: 1,
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('https://blog.example.com/post-with-og-image')
+    await expect(db.posts.toArray()).resolves.toMatchObject([
+      {
+        title: 'Feed post without media',
+        summary: 'Feed summary without an image.',
+        thumbnail: 'https://blog.example.com/covers/post-with-og-image.png',
+        postUrl: 'https://blog.example.com/post-with-og-image',
+      },
+    ])
+  })
+
+  it('uses an AWS image fallback for AWS Blogs posts with no crawled thumbnail', async () => {
+    installFetchMock({
+      'https://aws.amazon.com/blogs/': `<!doctype html>
+        <html><head>
+          <link rel="alternate" type="application/rss+xml" href="/blogs/feed/" />
+        </head><body></body></html>`,
+      'https://aws.amazon.com/blogs/feed/': `<?xml version="1.0"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>AWS post without image metadata</title>
+            <link>https://aws.amazon.com/blogs/example/post-without-image/</link>
+            <description><![CDATA[<p>AWS feed summary without image metadata.</p>]]></description>
+            <pubDate>Fri, 20 Jun 2026 09:00:00 GMT</pubDate>
+          </item>
+        </channel></rss>`,
+      'https://aws.amazon.com/blogs/example/post-without-image/': `<!doctype html>
+        <html><head>
+          <meta property="og:description" content="No image here." />
+        </head><body><h1>AWS post without image metadata</h1></body></html>`,
+    })
+    const source = await addSourceRow('https://aws.amazon.com/blogs/')
+
+    await expect(crawlSource(source)).resolves.toMatchObject({
+      ok: true,
+      postsWritten: 1,
+      newPostsWritten: 1,
+    })
+
+    await expect(db.posts.toArray()).resolves.toMatchObject([
+      {
+        title: 'AWS post without image metadata',
+        thumbnail: 'https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png',
+        postUrl: 'https://aws.amazon.com/blogs/example/post-without-image/',
+      },
+    ])
+  })
+
   it('does not fetch an off-origin declared feed', async () => {
     const fetchMock = installFetchMock({
       'https://blog.example.com/': `<!doctype html>

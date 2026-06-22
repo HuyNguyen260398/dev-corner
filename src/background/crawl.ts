@@ -3,7 +3,7 @@ import { parseMarkup } from '../lib/dom'
 import { discoverFeedUrl, feedProbeUrls, parseFeed, type FeedEntry } from '../lib/feed'
 import { pruneOldPosts } from '../lib/prune'
 import { summarize } from '../lib/summary'
-import { resolveThumbnail } from '../lib/thumbnail'
+import { PLACEHOLDER_THUMBNAIL, resolveThumbnail } from '../lib/thumbnail'
 import type { Post, Source } from '../lib/types'
 import { ensureSourcePermission } from './permissions'
 
@@ -11,6 +11,8 @@ export const CRAWL_QUEUE_KEY = 'crawlQueue'
 export const CRAWL_IN_PROGRESS_KEY = 'crawlInProgress'
 
 const MAX_POSTS_PER_SOURCE = 5
+const AWS_BLOGS_DEFAULT_THUMBNAIL =
+  'https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png'
 
 export interface CrawlSourceResult {
   ok: boolean
@@ -59,7 +61,7 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
     const entries =
       feed === undefined
         ? await extractHtmlEntries(fetchedPage ?? (await fetchText(persistedSource.url)))
-        : parseFeed(feed.text)
+        : await enrichFeedEntries(parseFeed(feed.text), persistedSource.url)
 
     const now = Date.now()
     const crawlDay = localDateKey(new Date(now))
@@ -222,6 +224,35 @@ async function extractHtmlEntries(fetchedPage: FetchTextResult): Promise<HtmlEnt
   return entries
 }
 
+async function enrichFeedEntries(entries: FeedEntry[], sourceUrl: string): Promise<FeedEntry[]> {
+  const enriched: FeedEntry[] = []
+  for (const entry of entries) {
+    enriched.push(await enrichFeedEntry(entry, sourceUrl))
+  }
+  return enriched
+}
+
+async function enrichFeedEntry(entry: FeedEntry, sourceUrl: string): Promise<FeedEntry> {
+  if (entry.thumbnail !== PLACEHOLDER_THUMBNAIL) return entry
+  const postUrl = sameOriginUrl(entry.postUrl, sourceUrl)
+  if (postUrl === undefined) return entry
+
+  const page = await fetchMaybe(postUrl)
+  if (page === undefined) return entry
+
+  const doc = parseMarkup(page.text, 'text/html')
+  const ogImage = absoluteUrl(metaContent(doc, 'og:image'), page.url)
+  return {
+    ...entry,
+    postUrl,
+    thumbnail: resolveThumbnail({
+      ...(ogImage !== undefined ? { ogImage } : {}),
+      contentHtml: page.text,
+      baseUrl: page.url,
+    }),
+  }
+}
+
 async function enrichHtmlEntry(candidate: { title: string; postUrl: string }): Promise<HtmlEntry> {
   const page = await fetchMaybe(candidate.postUrl)
   if (page === undefined) {
@@ -242,6 +273,7 @@ async function enrichHtmlEntry(candidate: { title: string; postUrl: string }): P
     thumbnail: resolveThumbnail({
       ...(ogImage !== undefined ? { ogImage } : {}),
       contentHtml: page.text,
+      baseUrl: page.url,
     }),
   }
 }
@@ -257,12 +289,17 @@ function toPost({
   crawledAt: number
   crawlDay: string
 }): Post {
+  const thumbnail =
+    entry.thumbnail === PLACEHOLDER_THUMBNAIL
+      ? sourceDefaultThumbnail(source.url) ?? entry.thumbnail
+      : entry.thumbnail
+
   return {
     sourceId: source.id,
     sourceUrl: source.url,
     title: entry.title,
     summary: entry.summary,
-    thumbnail: entry.thumbnail,
+    thumbnail,
     postUrl: entry.postUrl,
     ...('publishedAt' in entry && entry.publishedAt !== undefined
       ? { publishedAt: entry.publishedAt }
@@ -270,6 +307,18 @@ function toPost({
     crawledAt,
     crawlDay,
   }
+}
+
+function sourceDefaultThumbnail(sourceUrl: string): string | undefined {
+  try {
+    const url = new URL(sourceUrl)
+    if (url.hostname === 'aws.amazon.com' && url.pathname.startsWith('/blogs')) {
+      return AWS_BLOGS_DEFAULT_THUMBNAIL
+    }
+  } catch {
+    return undefined
+  }
+  return undefined
 }
 
 async function upsertPost(post: Post): Promise<boolean> {

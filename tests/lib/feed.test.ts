@@ -69,6 +69,29 @@ describe('parseFeed — RSS 2.0', () => {
     expect(entries[3]?.thumbnail).toBe('https://example.com/content-4.png') // content <img>
     expect(entries[4]?.thumbnail).toBe(PLACEHOLDER_THUMBNAIL) // nothing -> placeholder
   })
+
+  it('uses a relative lazy image from content:encoded when description has no image', () => {
+    const xml = `<?xml version="1.0"?>
+      <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+        <channel>
+          <item>
+            <title>Content Image</title>
+            <link>https://blog.example.com/posts/content-image</link>
+            <description><![CDATA[<p>Excerpt without an image.</p>]]></description>
+            <content:encoded><![CDATA[
+              <figure>
+                <img data-src="/assets/content-image.jpg" alt="Content image" />
+              </figure>
+            ]]></content:encoded>
+          </item>
+        </channel>
+      </rss>`
+
+    const [entry] = parseFeed(xml)
+
+    expect(entry?.summary).toBe('Excerpt without an image.')
+    expect(entry?.thumbnail).toBe('https://blog.example.com/assets/content-image.jpg')
+  })
 })
 
 describe('parseFeed — Atom', () => {
