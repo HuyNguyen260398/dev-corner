@@ -238,7 +238,7 @@ export function App() {
       <footer className="action-bar" aria-label="Primary actions">
         <button type="button" className="primary-action" onClick={() => void saveCurrentPage()}>
           <PlusIcon />
-          <span>Save page</span>
+          <span>Subscribe</span>
         </button>
         <button type="button" className="secondary-action" onClick={focusSources}>
           <ListIcon />
@@ -402,11 +402,11 @@ function SourceList({
               type="button"
               className="icon-button subtle"
               onClick={() => void remove(source.id!)}
-              aria-label={`Delete ${source.title}`}
-              title={`Delete ${source.title}`}
+              aria-label={`Unsubscribe ${source.title}`}
+              title={`Unsubscribe ${source.title}`}
             >
-              <TrashIcon />
-              <span className="sr-only">Delete</span>
+              <BookmarkOffIcon />
+              <span className="sr-only">Unsubscribe</span>
             </button>
           </li>
         ))}
@@ -525,14 +525,11 @@ function ListIcon() {
   )
 }
 
-function TrashIcon() {
+function BookmarkOffIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 6h18" />
-      <path d="M8 6V4h8v2" />
-      <path d="M19 6l-1 14H6L5 6" />
-      <path d="M10 11v5" />
-      <path d="M14 11v5" />
+      <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v11" />
+      <path d="M2 2l20 20" />
     </svg>
   )
 }

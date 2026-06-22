@@ -87,7 +87,7 @@ describe('App digest preview', () => {
     expect(screen.getByText('Local only')).toBeTruthy()
     expect(screen.getByText('07:00 crawl')).toBeTruthy()
     expect(screen.getByText('5 min read')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Save page' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Subscribe' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Sources' })).toBeTruthy()
   })
 
@@ -159,7 +159,7 @@ describe('App source permissions', () => {
 
     render(<App />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Save page' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Subscribe' }))
 
     await waitFor(() => {
       expect(chrome.permissions.request).toHaveBeenCalledWith(
@@ -202,6 +202,17 @@ describe('App source permissions', () => {
         permissionGranted: true,
       })
     })
+  })
+
+  it('labels source removal as unsubscribe instead of delete', async () => {
+    await db.sources.add(source(1))
+
+    render(<App />)
+
+    const sourceItem = await screen.findByText('Source 1')
+    const sourceRow = sourceItem.closest('li')
+    expect(sourceRow).not.toBeNull()
+    expect(within(sourceRow!).getByRole('button', { name: 'Unsubscribe Source 1' })).toBeTruthy()
   })
 })
 
