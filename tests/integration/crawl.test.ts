@@ -614,6 +614,23 @@ describe('background notifications', () => {
       })
     })
   })
+
+  it('rejects when Chrome cannot create the notification', async () => {
+    const { createDailyDigestNotification } = await import('../../src/background/notifications')
+    Object.assign(chrome.runtime, { lastError: { message: 'Notifications are disabled' } })
+
+    await expect(
+      createDailyDigestNotification({
+        newPostCount: 3,
+        digestCount: 5,
+        dateKey: '2026-06-21',
+      }),
+    ).rejects.toThrow('Notifications are disabled')
+    expect(storage.values.lastDigestNotificationDate).toBeUndefined()
+
+    delete (chrome.runtime as typeof chrome.runtime & { lastError?: chrome.runtime.LastError })
+      .lastError
+  })
 })
 
 async function addSourceRow(url: string): Promise<Source & { id: number }> {

@@ -48,8 +48,15 @@ function createNotification(
   notificationId: string,
   options: chrome.notifications.NotificationCreateOptions,
 ): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.notifications.create(notificationId, options, () => resolve())
+  return new Promise((resolve, reject) => {
+    chrome.notifications.create(notificationId, options, () => {
+      const lastError = chrome.runtime.lastError
+      if (lastError !== undefined) {
+        reject(new Error(lastError.message))
+        return
+      }
+      resolve()
+    })
   })
 }
 
