@@ -84,6 +84,8 @@ describe('App digest preview', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Morning brief' })).toBeTruthy()
+    expect(screen.getByText('Daily digest')).toBeTruthy()
+    expect(screen.getAllByText('Morning brief')).toHaveLength(1)
     expect(screen.getByText('Local only')).toBeTruthy()
     expect(screen.getByText('07:00 crawl')).toBeTruthy()
     expect(screen.getByText('5 min read')).toBeTruthy()
@@ -109,6 +111,7 @@ describe('App digest preview', () => {
     const digest = await screen.findByRole('list', { name: "Today's digest" })
     const items = within(digest).getAllByRole('listitem')
     expect(items).toHaveLength(5)
+    expect(screen.queryByText('5 posts from your saved sources')).toBeNull()
     expect(screen.queryByText('Post 7')).toBeNull()
     for (const item of items) {
       expect(within(item).getByRole('img').getAttribute('src')).toBeTruthy()
@@ -133,6 +136,7 @@ describe('App digest preview', () => {
     await waitFor(() => {
       expect(screen.getByRole('status').textContent).toBe('Refreshing latest posts...')
     })
+    expect(screen.getByRole('progressbar', { name: 'Refreshing latest posts progress' })).toBeTruthy()
   })
 
   it('surfaces source errors when every saved source failed and no posts are available', async () => {

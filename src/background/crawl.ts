@@ -13,6 +13,7 @@ export const CRAWL_IN_PROGRESS_KEY = 'crawlInProgress'
 const MAX_POSTS_PER_SOURCE = 5
 const AWS_BLOGS_DEFAULT_THUMBNAIL =
   'https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png'
+const NON_POST_PATH_PREFIXES = ['/author', '/authors', '/category', '/page', '/tag', '/tags']
 
 export interface CrawlSourceResult {
   ok: boolean
@@ -197,31 +198,98 @@ async function resolveFeed(
 
 async function extractHtmlEntries(fetchedPage: FetchTextResult): Promise<HtmlEntry[]> {
   const doc = parseMarkup(fetchedPage.text, 'text/html')
-  const sourceOrigin = new URL(fetchedPage.url).origin
-  const links = Array.from(doc.querySelectorAll('article a, h2 a, h3 a'))
-  const seen = new Set<string>()
-  const candidates: Array<{ title: string; postUrl: string }> = []
-
-  for (const link of links) {
-    const href = link.getAttribute('href')
-    if (href === null) continue
-    const postUrl = new URL(href, fetchedPage.url).href
-    if (new URL(postUrl).origin !== sourceOrigin) continue
-    if (seen.has(postUrl)) continue
-
-    seen.add(postUrl)
-    candidates.push({
-      title: link.textContent?.replace(/\s+/g, ' ').trim() || 'Untitled',
-      postUrl,
-    })
-    if (candidates.length >= MAX_POSTS_PER_SOURCE) break
-  }
+  const candidates = htmlPostCandidates(doc, fetchedPage.url).slice(0, MAX_POSTS_PER_SOURCE)
 
   const entries: HtmlEntry[] = []
   for (const candidate of candidates) {
     entries.push(await enrichHtmlEntry(candidate))
   }
   return entries
+}
+
+function htmlPostCandidates(doc: Document, sourceUrl: string): Array<{ title: string; postUrl: string }> {
+  const articleCandidates = Array.from(doc.querySelectorAll('article')).flatMap((article) => {
+    const candidate = htmlPostCandidateFromArticle(article, sourceUrl)
+    return candidate === undefined ? [] : [candidate]
+  })
+
+  const links =
+    articleCandidates.length > 0
+      ? articleCandidates
+      : Array.from(doc.querySelectorAll('h1 a, h2 a, h3 a, article a')).flatMap((link) => {
+          const candidate = htmlPostCandidateFromLink(link, sourceUrl)
+          return candidate === undefined ? [] : [candidate]
+        })
+
+  const seen = new Set<string>()
+  const candidates: Array<{ title: string; postUrl: string }> = []
+
+  for (const candidate of links) {
+    if (!seen.has(candidate.postUrl)) {
+      seen.add(candidate.postUrl)
+      candidates.push(candidate)
+    }
+  }
+
+  return candidates
+}
+
+function htmlPostCandidateFromArticle(
+  article: Element,
+  sourceUrl: string,
+): { title: string; postUrl: string } | undefined {
+  const headingLinks = Array.from(article.querySelectorAll('h1 a, h2 a, h3 a'))
+  for (const link of headingLinks) {
+    const candidate = htmlPostCandidateFromLink(link, sourceUrl)
+    if (candidate !== undefined) return candidate
+  }
+
+  const links = Array.from(article.querySelectorAll('a'))
+  for (const link of links) {
+    const candidate = htmlPostCandidateFromLink(link, sourceUrl)
+    if (candidate !== undefined) return candidate
+  }
+
+  return undefined
+}
+
+function htmlPostCandidateFromLink(
+  link: Element,
+  sourceUrl: string,
+): { title: string; postUrl: string } | undefined {
+  const href = link.getAttribute('href')
+  if (href === null) return undefined
+
+  const postUrl = sameOriginUrl(href, sourceUrl)
+  if (postUrl === undefined || !isLikelyPostUrl(postUrl, sourceUrl)) return undefined
+
+  const title = linkTitle(link)
+  return title === undefined ? undefined : { title, postUrl }
+}
+
+function linkTitle(link: Element): string | undefined {
+  return (
+    cleanText(link.textContent) ??
+    cleanText(link.getAttribute('aria-label')) ??
+    cleanText(link.querySelector('img')?.getAttribute('alt'))
+  )
+}
+
+function cleanText(value: string | null | undefined): string | undefined {
+  const cleaned = value?.replace(/\s+/g, ' ').trim()
+  return cleaned ? cleaned : undefined
+}
+
+function isLikelyPostUrl(postUrl: string, sourceUrl: string): boolean {
+  const url = new URL(postUrl)
+  const source = new URL(sourceUrl)
+  if (url.href === source.href) return false
+
+  const path = url.pathname.replace(/\/+$/, '')
+  const sourcePath = source.pathname.replace(/\/+$/, '')
+  if (path === sourcePath) return false
+
+  return !NON_POST_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 }
 
 async function enrichFeedEntries(entries: FeedEntry[], sourceUrl: string): Promise<FeedEntry[]> {

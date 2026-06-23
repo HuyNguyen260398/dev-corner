@@ -442,6 +442,28 @@ h2 {
   width: 58%;
 }
 
+.crawl-progress {
+  position: relative;
+  height: 8px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid #263244;
+  border-radius: 999px;
+  background: #172033;
+}
+
+.crawl-progress::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: inherit;
+  animation: crawl-progress 1.2s ease-in-out infinite;
+  background: linear-gradient(90deg, rgba(34, 197, 94, 0.1), #22c55e, #86efac);
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.35);
+  content: "";
+  transform: translateX(-120%);
+}
+
 .empty-state p:last-child {
   color: #94a3b8;
   font-size: 13px;
@@ -618,6 +640,16 @@ h2 {
   }
 }
 
+@keyframes crawl-progress {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  100% {
+    transform: translateX(260%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -626,5 +658,12 @@ h2 {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .crawl-progress::before {
+    width: 100%;
+    animation: none !important;
+    opacity: 0.72;
+    transform: none;
   }
 }

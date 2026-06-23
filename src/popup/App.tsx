@@ -150,6 +150,7 @@ export function App() {
   const sourceCount = sources?.length ?? 0
   const postCount = todaysPosts?.length ?? 0
   const lastCrawl = latestCrawlTime(sources)
+  const heroSubtitle = digestSummary(sourceCount, postCount, crawlInProgress)
 
   return (
     <main className="popup-shell">
@@ -180,10 +181,10 @@ export function App() {
       <section className="digest-panel" aria-labelledby="digest-heading">
         <div className="hero-copy">
           <div>
-            <p className="eyebrow accent">Morning brief</p>
+            <p className="eyebrow accent">Daily digest</p>
             <h1 id="digest-heading">Morning brief</h1>
           </div>
-          <p className="hero-subtitle">{digestSummary(sourceCount, postCount, crawlInProgress)}</p>
+          {heroSubtitle && <p className="hero-subtitle">{heroSubtitle}</p>}
         </div>
 
         <div className="status-pills" aria-label="Digest status">
@@ -265,9 +266,12 @@ function DigestPreview({
     return (
       <div className="loading-card" role="status">
         <p>Refreshing latest posts...</p>
-        <span />
-        <span />
-        <span />
+        <div
+          className="crawl-progress"
+          role="progressbar"
+          aria-label="Refreshing latest posts progress"
+          aria-valuetext="Refreshing latest posts"
+        />
       </div>
     )
   }
@@ -427,11 +431,15 @@ function localDateKey(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-function digestSummary(sourceCount: number, postCount: number, crawlInProgress: boolean): string {
+function digestSummary(
+  sourceCount: number,
+  postCount: number,
+  crawlInProgress: boolean,
+): string | null {
   if (crawlInProgress) return 'Refreshing your saved sources'
   if (sourceCount === 0) return 'Save a developer blog to start your local brief'
   if (postCount === 0) return `${sourceCount} saved ${pluralize('source', sourceCount)} ready`
-  return `${Math.min(postCount, 5)} posts from your saved sources`
+  return null
 }
 
 function latestCrawlTime(sources: Source[] | undefined): string {
