@@ -150,6 +150,7 @@ export function App() {
   const sourceCount = sources?.length ?? 0
   const postCount = todaysPosts?.length ?? 0
   const lastCrawl = latestCrawlTime(sources)
+  const heroSubtitle = digestSummary(sourceCount, postCount, crawlInProgress)
 
   return (
     <main className="popup-shell">
@@ -180,10 +181,10 @@ export function App() {
       <section className="digest-panel" aria-labelledby="digest-heading">
         <div className="hero-copy">
           <div>
-            <p className="eyebrow accent">Morning brief</p>
+            <p className="eyebrow accent">Daily digest</p>
             <h1 id="digest-heading">Morning brief</h1>
           </div>
-          <p className="hero-subtitle">{digestSummary(sourceCount, postCount, crawlInProgress)}</p>
+          {heroSubtitle && <p className="hero-subtitle">{heroSubtitle}</p>}
         </div>
 
         <div className="status-pills" aria-label="Digest status">
@@ -238,7 +239,7 @@ export function App() {
       <footer className="action-bar" aria-label="Primary actions">
         <button type="button" className="primary-action" onClick={() => void saveCurrentPage()}>
           <PlusIcon />
-          <span>Save page</span>
+          <span>Subscribe</span>
         </button>
         <button type="button" className="secondary-action" onClick={focusSources}>
           <ListIcon />
@@ -265,9 +266,12 @@ function DigestPreview({
     return (
       <div className="loading-card" role="status">
         <p>Refreshing latest posts...</p>
-        <span />
-        <span />
-        <span />
+        <div
+          className="crawl-progress"
+          role="progressbar"
+          aria-label="Refreshing latest posts progress"
+          aria-valuetext="Refreshing latest posts"
+        />
       </div>
     )
   }
@@ -381,8 +385,13 @@ function SourceList({
             <span className="source-favicon" aria-hidden="true">
               {sourceInitial(source)}
             </span>
-            <span className="source-title" title={source.url}>
-              {source.title}
+            <span className="source-copy">
+              <span className="source-title" title={source.url}>
+                {source.title}
+              </span>
+              <span className="source-url" title={source.url}>
+                {source.url}
+              </span>
             </span>
             {source.permissionState === 'needsPermission' && (
               <>
@@ -402,11 +411,11 @@ function SourceList({
               type="button"
               className="icon-button subtle"
               onClick={() => void remove(source.id!)}
-              aria-label={`Delete ${source.title}`}
-              title={`Delete ${source.title}`}
+              aria-label={`Unsubscribe ${source.title}`}
+              title={`Unsubscribe ${source.title}`}
             >
-              <TrashIcon />
-              <span className="sr-only">Delete</span>
+              <BookmarkOffIcon />
+              <span className="sr-only">Unsubscribe</span>
             </button>
           </li>
         ))}
@@ -422,11 +431,15 @@ function localDateKey(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-function digestSummary(sourceCount: number, postCount: number, crawlInProgress: boolean): string {
+function digestSummary(
+  sourceCount: number,
+  postCount: number,
+  crawlInProgress: boolean,
+): string | null {
   if (crawlInProgress) return 'Refreshing your saved sources'
   if (sourceCount === 0) return 'Save a developer blog to start your local brief'
   if (postCount === 0) return `${sourceCount} saved ${pluralize('source', sourceCount)} ready`
-  return `${Math.min(postCount, 5)} posts from your saved sources`
+  return null
 }
 
 function latestCrawlTime(sources: Source[] | undefined): string {
@@ -525,14 +538,11 @@ function ListIcon() {
   )
 }
 
-function TrashIcon() {
+function BookmarkOffIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 6h18" />
-      <path d="M8 6V4h8v2" />
-      <path d="M19 6l-1 14H6L5 6" />
-      <path d="M10 11v5" />
-      <path d="M14 11v5" />
+      <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v11" />
+      <path d="M2 2l20 20" />
     </svg>
   )
 }

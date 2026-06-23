@@ -165,6 +165,160 @@ describe('crawlSource', () => {
     ])
   })
 
+  it('uses article title links when HTML fallback pages include image, tag, and author links', async () => {
+    installFetchMock({
+      'https://devopscube.com/blog/': `<!doctype html>
+        <html><head>
+          <link rel="alternate" type="application/rss+xml" href="/rss/" />
+        </head><body>
+          <article>
+            <a href="https://devopscube.com/create-helm-chart/">
+              <img
+                alt="Helm Chart Tutorial: A Simple Guide for Beginners"
+                src="https://storage.ghost.io/content/images/size/w100/helm-chart.png"
+              />
+            </a>
+            <a href="/tag/kubernetes/">Kubernetes</a>
+            <h2>
+              <a
+                aria-label="Helm Chart Tutorial: A Simple Guide for Beginners"
+                href="https://devopscube.com/create-helm-chart/"
+              >Helm Chart Tutorial: A Simple Guide for Beginners</a>
+            </h2>
+            <a aria-label="Aman Jaiswal" href="/author/aman/">
+              <img alt="Aman Jaiswal" src="https://devopscube.com/author-avatar.png" />
+            </a>
+          </article>
+          <article>
+            <a href="https://devopscube.com/slsa-provenance/">
+              <img
+                alt="SLSA Provenance Creation using GitHub Actions"
+                src="https://storage.ghost.io/content/images/size/w100/slsa.png"
+              />
+            </a>
+            <a href="/tag/github-actions/">GITHUB ACTIONS</a>
+            <h2>
+              <a
+                aria-label="SLSA Provenance Creation using GitHub Actions"
+                href="https://devopscube.com/slsa-provenance/"
+              >SLSA Provenance Creation using GitHub Actions</a>
+            </h2>
+            <a aria-label="Aswin Vijayan" href="/author/aswin/">
+              <img alt="Aswin Vijayan" src="https://devopscube.com/aswin-avatar.png" />
+            </a>
+          </article>
+        </body></html>`,
+      'https://devopscube.com/rss/': `<?xml version="1.0"?>
+        <rss version="2.0"><channel><title>DevOpsCube</title></channel></rss>`,
+      'https://devopscube.com/feed': new Error('not found'),
+      'https://devopscube.com/rss': new Error('not found'),
+      'https://devopscube.com/rss.xml': new Error('not found'),
+      'https://devopscube.com/atom.xml': new Error('not found'),
+      'https://devopscube.com/feed.xml': new Error('not found'),
+      'https://devopscube.com/index.xml': new Error('not found'),
+      'https://devopscube.com/create-helm-chart/': `<!doctype html>
+        <html><head>
+          <meta property="og:description" content="Learn how to create a Helm chart." />
+          <meta property="og:image" content="https://devopscube.com/helm-og.png" />
+        </head><body></body></html>`,
+      'https://devopscube.com/slsa-provenance/': `<!doctype html>
+        <html><head>
+          <meta property="og:description" content="Learn SLSA provenance with GitHub Actions." />
+          <meta property="og:image" content="https://devopscube.com/slsa-og.png" />
+        </head><body></body></html>`,
+    })
+    const source = await addSourceRow('https://devopscube.com/blog/')
+
+    const result = await crawlSource(source)
+
+    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 2, newPostsWritten: 2 })
+    await expect(db.posts.orderBy('postUrl').toArray()).resolves.toMatchObject([
+      {
+        title: 'Helm Chart Tutorial: A Simple Guide for Beginners',
+        thumbnail: 'https://devopscube.com/helm-og.png',
+        postUrl: 'https://devopscube.com/create-helm-chart/',
+      },
+      {
+        title: 'SLSA Provenance Creation using GitHub Actions',
+        thumbnail: 'https://devopscube.com/slsa-og.png',
+        postUrl: 'https://devopscube.com/slsa-provenance/',
+      },
+    ])
+  })
+
+  it('enriches feed entries with post Open Graph images when the feed has no image', async () => {
+    const fetchMock = installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': `<?xml version="1.0"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>Feed post without media</title>
+            <link>/post-with-og-image</link>
+            <description><![CDATA[<p>Feed summary without an image.</p>]]></description>
+            <pubDate>Fri, 20 Jun 2026 09:00:00 GMT</pubDate>
+          </item>
+        </channel></rss>`,
+      'https://blog.example.com/post-with-og-image': `<!doctype html>
+        <html><head>
+          <meta property="og:image" content="/covers/post-with-og-image.png" />
+        </head><body><h1>Feed post without media</h1></body></html>`,
+    })
+    const source = await addSourceRow('https://blog.example.com/')
+
+    await expect(crawlSource(source)).resolves.toMatchObject({
+      ok: true,
+      postsWritten: 1,
+      newPostsWritten: 1,
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('https://blog.example.com/post-with-og-image')
+    await expect(db.posts.toArray()).resolves.toMatchObject([
+      {
+        title: 'Feed post without media',
+        summary: 'Feed summary without an image.',
+        thumbnail: 'https://blog.example.com/covers/post-with-og-image.png',
+        postUrl: 'https://blog.example.com/post-with-og-image',
+      },
+    ])
+  })
+
+  it('uses an AWS image fallback for AWS Blogs posts with no crawled thumbnail', async () => {
+    installFetchMock({
+      'https://aws.amazon.com/blogs/': `<!doctype html>
+        <html><head>
+          <link rel="alternate" type="application/rss+xml" href="/blogs/feed/" />
+        </head><body></body></html>`,
+      'https://aws.amazon.com/blogs/feed/': `<?xml version="1.0"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>AWS post without image metadata</title>
+            <link>https://aws.amazon.com/blogs/example/post-without-image/</link>
+            <description><![CDATA[<p>AWS feed summary without image metadata.</p>]]></description>
+            <pubDate>Fri, 20 Jun 2026 09:00:00 GMT</pubDate>
+          </item>
+        </channel></rss>`,
+      'https://aws.amazon.com/blogs/example/post-without-image/': `<!doctype html>
+        <html><head>
+          <meta property="og:description" content="No image here." />
+        </head><body><h1>AWS post without image metadata</h1></body></html>`,
+    })
+    const source = await addSourceRow('https://aws.amazon.com/blogs/')
+
+    await expect(crawlSource(source)).resolves.toMatchObject({
+      ok: true,
+      postsWritten: 1,
+      newPostsWritten: 1,
+    })
+
+    await expect(db.posts.toArray()).resolves.toMatchObject([
+      {
+        title: 'AWS post without image metadata',
+        thumbnail: 'https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png',
+        postUrl: 'https://aws.amazon.com/blogs/example/post-without-image/',
+      },
+    ])
+  })
+
   it('does not fetch an off-origin declared feed', async () => {
     const fetchMock = installFetchMock({
       'https://blog.example.com/': `<!doctype html>
@@ -613,6 +767,23 @@ describe('background notifications', () => {
         url: 'chrome-extension://dev-corner/src/popup/index.html',
       })
     })
+  })
+
+  it('rejects when Chrome cannot create the notification', async () => {
+    const { createDailyDigestNotification } = await import('../../src/background/notifications')
+    Object.assign(chrome.runtime, { lastError: { message: 'Notifications are disabled' } })
+
+    await expect(
+      createDailyDigestNotification({
+        newPostCount: 3,
+        digestCount: 5,
+        dateKey: '2026-06-21',
+      }),
+    ).rejects.toThrow('Notifications are disabled')
+    expect(storage.values.lastDigestNotificationDate).toBeUndefined()
+
+    delete (chrome.runtime as typeof chrome.runtime & { lastError?: chrome.runtime.LastError })
+      .lastError
   })
 })
 

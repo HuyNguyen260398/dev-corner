@@ -11,6 +11,14 @@ describe('firstImageSrc', () => {
     expect(firstImageSrc(html)).toBe('https://x.test/a.png')
   })
 
+  it('recognizes common lazy image attributes and srcset candidates', () => {
+    expect(firstImageSrc('<img data-src="https://x.test/lazy.png">')).toBe(
+      'https://x.test/lazy.png',
+    )
+    expect(firstImageSrc('<img srcset="https://x.test/small.png 1x, https://x.test/big.png 2x">'))
+      .toBe('https://x.test/small.png')
+  })
+
   it('returns undefined when there is no image', () => {
     expect(firstImageSrc('<p>no images here</p>')).toBeUndefined()
     expect(firstImageSrc('')).toBeUndefined()
@@ -54,5 +62,14 @@ describe('resolveThumbnail fallback chain', () => {
     expect(
       resolveThumbnail({ feedMedia: '', ogImage: '', contentHtml: '' }),
     ).toBe(PLACEHOLDER_THUMBNAIL)
+  })
+
+  it('resolves relative thumbnail candidates against the post URL', () => {
+    expect(
+      resolveThumbnail({
+        contentHtml: '<img src="/content.jpg">',
+        baseUrl: 'https://x.test/posts/a',
+      }),
+    ).toBe('https://x.test/content.jpg')
   })
 })
