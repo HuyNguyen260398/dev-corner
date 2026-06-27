@@ -1,13 +1,17 @@
 // Daily digest and source management UI. The popup never crawls (GUD-002): it
 // reads IndexedDB live and routes saves/deletes/refreshes through the worker via
 // the typed message boundary (GUD-003).
-import { useEffect, useRef, useState, type Ref } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
+import { listFavorites } from '../lib/favorites'
 import { originPatternForUrl } from '../lib/permissions'
-import { selectDigest } from '../lib/selection'
 import { listSources } from '../lib/sources'
 import type { Post, Settings, Source, WorkerRequest, WorkerResponse } from '../lib/types'
+import { BottomNav, type PopupTab } from './BottomNav'
+import { DailyPostsTab } from './DailyPostsTab'
+import { FavoritePostsTab } from './FavoritePostsTab'
+import { SourcesTab } from './SourcesTab'
 import './App.css'
 
 function send(request: WorkerRequest): Promise<WorkerResponse> {
@@ -22,10 +26,12 @@ export function App() {
   const today = localDateKey(new Date())
   const sources = useLiveQuery(() => listSources(), [])
   const todaysPosts = useLiveQuery(() => db.posts.where('crawlDay').equals(today).toArray(), [today])
+  const favorites = useLiveQuery(() => listFavorites(), [])
   const [error, setError] = useState<string | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [crawlInProgress, setCrawlInProgress] = useState(false)
-  const sourcesSectionRef = useRef<HTMLElement | null>(null)
+  const [activeTab, setActiveTab] = useState<PopupTab>('daily')
+  const [pendingFavoriteUrls, setPendingFavoriteUrls] = useState<ReadonlySet<string>>(new Set())
 
   useEffect(() => {
     void loadSchedulingState()
@@ -99,14 +105,13 @@ export function App() {
   async function refreshNow() {
     setError(null)
     setCrawlInProgress(true)
-    const res = await send({ type: 'CRAWL_ALL' })
-    if (!res.ok) setError(res.error)
-    const status = await send({ type: 'GET_CRAWL_STATUS' })
-    if (status.ok && status.crawlInProgress !== undefined) {
-      setCrawlInProgress(status.crawlInProgress)
-    } else {
+    try {
+      const response = await send({ type: 'CRAWL_ALL' })
+      if (!response.ok) setError(response.error)
+    } catch (error) {
+      setError(errorMessage(error))
+    } finally {
       setCrawlInProgress(false)
-      if (!status.ok) setError(status.error)
     }
   }
 
@@ -143,14 +148,38 @@ export function App() {
     }
   }
 
-  function focusSources() {
-    sourcesSectionRef.current?.focus()
+  async function toggleDailyFavorite(post: Post) {
+    const isFavorite = favorites?.some((favorite) => favorite.postUrl === post.postUrl) ?? false
+    if (isFavorite) {
+      await updateFavorite(post.postUrl, { type: 'REMOVE_FAVORITE', postUrl: post.postUrl })
+      return
+    }
+    if (post.id === undefined) {
+      setError(`Post ${post.postUrl} has no persisted id.`)
+      return
+    }
+    await updateFavorite(post.postUrl, { type: 'ADD_FAVORITE', postId: post.id })
   }
 
-  const sourceCount = sources?.length ?? 0
-  const postCount = todaysPosts?.length ?? 0
+  async function updateFavorite(postUrl: string, request: WorkerRequest) {
+    setError(null)
+    setPendingFavoriteUrls((current) => new Set(current).add(postUrl))
+    try {
+      const response = await send(request)
+      if (!response.ok) setError(response.error)
+    } catch (error) {
+      setError(errorMessage(error))
+    } finally {
+      setPendingFavoriteUrls((current) => {
+        const next = new Set(current)
+        next.delete(postUrl)
+        return next
+      })
+    }
+  }
+
   const lastCrawl = latestCrawlTime(sources)
-  const heroSubtitle = digestSummary(sourceCount, postCount, crawlInProgress)
+  const favoriteUrls = new Set(favorites?.map((favorite) => favorite.postUrl) ?? [])
 
   return (
     <main className="popup-shell">
@@ -167,6 +196,15 @@ export function App() {
         <div className="topbar-actions" aria-label="Digest actions">
           <button
             type="button"
+            className="icon-button"
+            onClick={() => void saveCurrentPage()}
+            aria-label="Subscribe current page"
+            title="Subscribe current page"
+          >
+            <SubscribeIcon />
+          </button>
+          <button
+            type="button"
             className="icon-button is-live"
             onClick={() => void refreshNow()}
             disabled={crawlInProgress}
@@ -178,50 +216,40 @@ export function App() {
         </div>
       </header>
 
-      <section className="digest-panel" aria-labelledby="digest-heading">
-        <div className="hero-copy">
-          <div>
-            <p className="eyebrow accent">Daily digest</p>
-            <h1 id="digest-heading">Morning brief</h1>
-          </div>
-          {heroSubtitle && <p className="hero-subtitle">{heroSubtitle}</p>}
-        </div>
-
-        <div className="status-pills" aria-label="Digest status">
-          <span>Local only</span>
-          <span>{settings?.enableDailyCron !== false ? '07:00 crawl' : 'Manual crawl'}</span>
-          <span>5 min read</span>
-        </div>
-
-        <label className="schedule-toggle">
-          <input
-            type="checkbox"
-            checked={settings?.enableDailyCron ?? false}
-            disabled={settings === null}
-            onChange={(event) => void setDailyCron(event.currentTarget.checked)}
-          />
-          <span aria-hidden="true" />
-          <span>Daily 07:00 crawl</span>
-        </label>
-
-        <label className="schedule-toggle">
-          <input
-            type="checkbox"
-            checked={settings?.enableDailyNotifications ?? false}
-            disabled={settings === null}
-            onChange={(event) => void setDailyNotifications(event.currentTarget.checked)}
-          />
-          <span aria-hidden="true" />
-          <span>Daily notifications</span>
-        </label>
-
-        <DigestPreview
+      {activeTab === 'daily' && (
+        <DailyPostsTab
           crawlInProgress={crawlInProgress}
           posts={todaysPosts}
           sources={sources}
           today={today}
+          favoriteUrls={favoriteUrls}
+          pendingUrls={pendingFavoriteUrls}
+          onToggleFavorite={(post) => void toggleDailyFavorite(post)}
         />
-      </section>
+      )}
+
+      {activeTab === 'favorites' && (
+        <FavoritePostsTab
+          favorites={favorites}
+          pendingUrls={pendingFavoriteUrls}
+          onRemoveFavorite={(postUrl) =>
+            void updateFavorite(postUrl, { type: 'REMOVE_FAVORITE', postUrl })
+          }
+        />
+      )}
+
+      {activeTab === 'sources' && (
+        <SourcesTab
+          sources={sources}
+          settings={settings}
+          lastCrawl={lastCrawl}
+          onSaveCurrentPage={() => void saveCurrentPage()}
+          onRemoveSource={(id) => void remove(id)}
+          onRequestPermission={(source) => void requestPermission(source)}
+          onSetDailyCron={(enabled) => void setDailyCron(enabled)}
+          onSetDailyNotifications={(enabled) => void setDailyNotifications(enabled)}
+        />
+      )}
 
       {error && (
         <p className="alert" role="alert">
@@ -229,198 +257,8 @@ export function App() {
         </p>
       )}
 
-      <SourceList
-        ref={sourcesSectionRef}
-        sources={sources}
-        remove={remove}
-        requestPermission={requestPermission}
-      />
-
-      <footer className="action-bar" aria-label="Primary actions">
-        <button type="button" className="primary-action" onClick={() => void saveCurrentPage()}>
-          <PlusIcon />
-          <span>Subscribe</span>
-        </button>
-        <button type="button" className="secondary-action" onClick={focusSources}>
-          <ListIcon />
-          <span>Sources</span>
-        </button>
-        <p className="crawl-note">Last crawl {lastCrawl}</p>
-      </footer>
+      <BottomNav activeTab={activeTab} onSelect={setActiveTab} />
     </main>
-  )
-}
-
-function DigestPreview({
-  crawlInProgress,
-  posts,
-  sources,
-  today,
-}: {
-  crawlInProgress: boolean
-  posts: Post[] | undefined
-  sources: Source[] | undefined
-  today: string
-}) {
-  if (crawlInProgress) {
-    return (
-      <div className="loading-card" role="status">
-        <p>Refreshing latest posts...</p>
-        <div
-          className="crawl-progress"
-          role="progressbar"
-          aria-label="Refreshing latest posts progress"
-          aria-valuetext="Refreshing latest posts"
-        />
-      </div>
-    )
-  }
-
-  if (sources === undefined || posts === undefined) {
-    return (
-      <div className="loading-card" role="status">
-        <p>Loading digest...</p>
-        <span />
-        <span />
-        <span />
-      </div>
-    )
-  }
-
-  if (sources.length === 0) {
-    return (
-      <div className="empty-state">
-        <p className="empty-title">No sources saved yet.</p>
-        <p>Add the current page or use the right-click menu to build tomorrow's brief.</p>
-      </div>
-    )
-  }
-
-  const digest = selectDigest(posts, sources, today)
-  if (digest.length > 0) {
-    return (
-      <ul className="digest-list" aria-label="Today's digest">
-        {digest.map((post, index) => {
-          const source = sources.find((candidate) => candidate.id === post.sourceId)
-          return (
-            <li key={post.postUrl}>
-              <article className={index === 0 ? 'post-card featured-post' : 'post-card'}>
-                {post.thumbnail ? (
-                  <img src={post.thumbnail} alt={`${post.title} thumbnail`} width="72" height="72" />
-                ) : (
-                  <div className="thumbnail-fallback" aria-hidden="true">
-                    {sourceInitial(source, post)}
-                  </div>
-                )}
-                <div className="post-content">
-                  <div className="post-meta">
-                    <span>{source?.title ?? hostLabel(post.sourceUrl)}</span>
-                    <span>{relativeTime(post.publishedAt ?? post.crawledAt)}</span>
-                  </div>
-                  <h2>
-                    <a href={post.postUrl} target="_blank" rel="noreferrer">
-                      {post.title}
-                    </a>
-                  </h2>
-                  <p>{post.summary}</p>
-                </div>
-              </article>
-            </li>
-          )
-        })}
-      </ul>
-    )
-  }
-
-  const failures = sources.filter((source) => source.lastError)
-  if (failures.length === sources.length) {
-    return (
-      <div className="alert" role="alert">
-        <p>All sources failed to crawl.</p>
-        <ul>
-          {failures.map((source) => (
-            <li key={source.id ?? source.url}>
-              {source.title}: {source.lastError}
-            </li>
-          ))}
-        </ul>
-      </div>
-    )
-  }
-
-  return (
-    <div className="empty-state">
-      <p className="empty-title">No posts crawled for today yet.</p>
-      <p>Refresh the digest or wait for the next scheduled crawl.</p>
-    </div>
-  )
-}
-
-type SourceListProps = {
-  sources: Source[] | undefined
-  remove: (id: number) => Promise<void>
-  requestPermission: (source: Source & { id: number }) => Promise<void>
-}
-
-function SourceList({
-  ref,
-  sources,
-  remove,
-  requestPermission,
-}: SourceListProps & { ref: Ref<HTMLElement> }) {
-  if (sources === undefined || sources.length === 0) return null
-
-  return (
-    <section className="sources-panel" aria-labelledby="sources-heading" ref={ref} tabIndex={-1}>
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">Library</p>
-          <h2 id="sources-heading">Saved sources</h2>
-        </div>
-        <span>{sources.length}</span>
-      </div>
-      <ul className="source-list">
-        {sources.map((source) => (
-          <li key={source.id}>
-            <span className="source-favicon" aria-hidden="true">
-              {sourceInitial(source)}
-            </span>
-            <span className="source-copy">
-              <span className="source-title" title={source.url}>
-                {source.title}
-              </span>
-              <span className="source-url" title={source.url}>
-                {source.url}
-              </span>
-            </span>
-            {source.permissionState === 'needsPermission' && (
-              <>
-                <span className="permission-chip">Needs permission</span>
-                <button
-                  type="button"
-                  className="mini-button"
-                  onClick={() => {
-                    if (source.id != null) void requestPermission({ ...source, id: source.id })
-                  }}
-                >
-                  Grant permission
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              className="icon-button subtle"
-              onClick={() => void remove(source.id!)}
-              aria-label={`Unsubscribe ${source.title}`}
-              title={`Unsubscribe ${source.title}`}
-            >
-              <BookmarkOffIcon />
-              <span className="sr-only">Unsubscribe</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
   )
 }
 
@@ -429,17 +267,6 @@ function localDateKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-function digestSummary(
-  sourceCount: number,
-  postCount: number,
-  crawlInProgress: boolean,
-): string | null {
-  if (crawlInProgress) return 'Refreshing your saved sources'
-  if (sourceCount === 0) return 'Save a developer blog to start your local brief'
-  if (postCount === 0) return `${sourceCount} saved ${pluralize('source', sourceCount)} ready`
-  return null
 }
 
 function latestCrawlTime(sources: Source[] | undefined): string {
@@ -456,39 +283,11 @@ function latestCrawlTime(sources: Source[] | undefined): string {
   }).format(new Date(latest))
 }
 
-function relativeTime(timestamp: number): string {
-  const minutes = Math.max(1, Math.round((Date.now() - timestamp) / 60000))
-  if (minutes < 60) return `${minutes}m ago`
-
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-
-  const days = Math.round(hours / 24)
-  return `${days}d ago`
-}
-
 function formatToday(date: Date): string {
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
   }).format(date)
-}
-
-function hostLabel(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return 'Saved source'
-  }
-}
-
-function sourceInitial(source: Source | undefined, post?: Post): string {
-  const label = source?.title ?? (post ? hostLabel(post.sourceUrl) : 'S')
-  return label.trim().slice(0, 1).toUpperCase() || 'S'
-}
-
-function pluralize(word: string, count: number): string {
-  return count === 1 ? word : `${word}s`
 }
 
 function requestOriginPermission(sourceUrl: string): Promise<boolean> {
@@ -505,6 +304,16 @@ function requestOriginPermission(sourceUrl: string): Promise<boolean> {
   })
 }
 
+function SubscribeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
+      <path d="M12 7v6" />
+      <path d="M9 10h6" />
+    </svg>
+  )
+}
+
 function RefreshIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -512,37 +321,6 @@ function RefreshIcon() {
       <path d="M4 18v-5h5" />
       <path d="M18.5 9A7 7 0 0 0 6.2 6.7L4 9" />
       <path d="M5.5 15A7 7 0 0 0 17.8 17.3L20 15" />
-    </svg>
-  )
-}
-
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
-    </svg>
-  )
-}
-
-function ListIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 6h13" />
-      <path d="M8 12h13" />
-      <path d="M8 18h13" />
-      <path d="M3 6h.01" />
-      <path d="M3 12h.01" />
-      <path d="M3 18h.01" />
-    </svg>
-  )
-}
-
-function BookmarkOffIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v11" />
-      <path d="M2 2l20 20" />
     </svg>
   )
 }

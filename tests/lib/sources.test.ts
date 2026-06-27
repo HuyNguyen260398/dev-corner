@@ -6,6 +6,7 @@ import { addSource, deleteSource, listSources } from '../../src/lib/sources'
 import { db } from '../../src/lib/db'
 
 beforeEach(async () => {
+  await db.favoritePosts.clear()
   await db.sources.clear()
 })
 

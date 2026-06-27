@@ -11,6 +11,7 @@ export const CRAWL_QUEUE_KEY = 'crawlQueue'
 export const CRAWL_IN_PROGRESS_KEY = 'crawlInProgress'
 
 const MAX_POSTS_PER_SOURCE = 5
+const FETCH_TIMEOUT_MS = 15_000
 const AWS_BLOGS_DEFAULT_THUMBNAIL =
   'https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png'
 const NON_POST_PATH_PREFIXES = ['/author', '/authors', '/category', '/page', '/tag', '/tags']
@@ -399,11 +400,23 @@ async function upsertPost(post: Post): Promise<boolean> {
 }
 
 async function fetchText(url: string): Promise<FetchTextResult> {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Fetch failed for ${url}: HTTP ${response.status}`)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(url, { signal: controller.signal })
+    if (!response.ok) {
+      throw new Error(`Fetch failed for ${url}: HTTP ${response.status}`)
+    }
+    return { url, text: await response.text() }
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Fetch timed out after 15 seconds for ${url}`, { cause: error })
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
   }
-  return { url, text: await response.text() }
 }
 
 async function fetchMaybe(url: string): Promise<FetchTextResult | undefined> {

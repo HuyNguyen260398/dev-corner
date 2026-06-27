@@ -24,6 +24,9 @@ list. Fully local — no backend.
 | F10 | Each list item shows thumbnail + summary + a link that opens the post's original URL. |
 | F11 | The preview shows exactly 5 posts, selected by the rule in §4. |
 | F12 | A right-click (context-menu) item saves the current page as a source. |
+| F13 | Add or remove a favorite from Daily Posts, and remove it from Favorite Posts. |
+| F14 | Retain each favorite as an independent display snapshot after source deletion or post pruning. |
+| F15 | Expose Daily Posts, Favorite Posts, and Sources as popup tabs with fixed bottom navigation; every popup mount starts on Daily Posts. |
 
 ### 1.2 Non-functional
 
@@ -60,12 +63,13 @@ list. Fully local — no backend.
                 │       ┌──────────────┐                       │
                 │       │  IndexedDB    │  (Dexie)             │
                 │       │  sources,     │                       │
-                │       │  posts        │                       │
+                │       │  posts,       │                       │
+                │       │  favoritePosts│                       │
                 │       └──────┬───────┘                       │
                 │              │ useLiveQuery (read)           │
                 │              ▼                               │
                 │       ┌──────────────┐                       │
-                │       │  Popup (React)│  daily 5-post preview │
+                │       │  Popup (React)│  daily/favorites/sources│
                 │       └──────────────┘                       │
                 └──────────────────────────────────────────────┘
 ```
@@ -77,6 +81,9 @@ list. Fully local — no backend.
 - **IndexedDB (Dexie)** is the source of truth. The popup never crawls; it only
   reads, so it opens instantly even if a crawl is mid-flight.
 - The popup binds **live** to IndexedDB, so results appear as they're written.
+- Favorite mutations cross the typed worker boundary as `ADD_FAVORITE` and
+  `REMOVE_FAVORITE`; the service worker performs all `favoritePosts` writes,
+  while the popup observes the result through `useLiveQuery`.
 
 ---
 
@@ -179,6 +186,19 @@ interface Post {
   crawledAt: number
   crawlDay: string        // 'YYYY-MM-DD' local — used to scope "today's" list
 }
+
+interface FavoritePost {
+  id?: number
+  postUrl: string         // unique favorite identity
+  title: string
+  summary: string
+  thumbnail?: string
+  sourceUrl: string
+  sourceTitle: string     // retained after source deletion
+  publishedAt?: number
+  crawledAt: number
+  favoritedAt: number
+}
 ```
 
 Dexie schema:
@@ -186,10 +206,13 @@ Dexie schema:
 ```
 sources: '++id, &url, feedUrl, lastCrawledAt'
 posts:   '++id, sourceId, &postUrl, crawlDay, publishedAt'
+favoritePosts: '++id, &postUrl, favoritedAt, publishedAt, sourceUrl'
 ```
 
 `&postUrl` (unique) makes re-crawls idempotent: `put` upserts, so the same post
 isn't duplicated day to day. Old posts can be pruned (keep last K days).
+The version 2 `favoritePosts` table stores complete display snapshots and is not
+read or deleted by source removal or post-retention operations.
 
 ---
 
@@ -258,6 +281,11 @@ thumbnail/summary/click-through. *Done when: F8–F11 satisfied.*
 **M7 — Polish.** Empty/error/loading states, post pruning, icons, options page,
 Web Store assets. *Done when: review-ready.*
 
+**M8 — Favorites + tabbed popup.** Add the independent favorite snapshot table,
+typed worker mutations, shared post cards, and Daily Posts / Favorite Posts /
+Sources bottom navigation. *Done when: favorites survive source/post deletion,
+each popup mount opens Daily Posts, and source controls appear only under Sources.*
+
 ---
 
 ## 10. Testing Strategy
@@ -266,9 +294,20 @@ Web Store assets. *Done when: review-ready.*
   (RSS 2.0, Atom, missing fields), thumbnail fallback chain, next-07:00 math
   across TZ/DST edges.
 - **Integration:** mock `fetch` with sample feeds/HTML → assert DB rows.
+- **Favorite domain:** verify snapshot completeness, hostname fallback,
+  idempotent add/remove, newest-favorited ordering, and retention independence.
+- **Migration:** seed a version 1 database and verify version 2 preserves sources
+  and posts while creating an empty `favoritePosts` table.
+- **Worker messages:** verify typed add/remove success and missing-post failure.
+- **Popup:** verify default tab, all navigation destinations, favorite membership,
+  pending/error states, Sources-only controls, `aria-current`, `aria-pressed`,
+  descriptive favorite labels, and 44-by-44-pixel favorite targets.
 - **Manual matrix:** a blog with RSS, one Atom-only, one feed-less, one paywalled
   (expect graceful failure recorded in `source.lastError`).
 - **Fixtures:** store sample feeds under `tests/fixtures/`.
+
+This milestone does not resolve or modify Q1, the distribution target, or
+history retention. Those decisions remain open and retain their current behavior.
 
 ---
 

@@ -271,7 +271,10 @@ describe('crawlSource', () => {
       newPostsWritten: 1,
     })
 
-    expect(fetchMock).toHaveBeenCalledWith('https://blog.example.com/post-with-og-image')
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://blog.example.com/post-with-og-image',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
     await expect(db.posts.toArray()).resolves.toMatchObject([
       {
         title: 'Feed post without media',
@@ -335,7 +338,10 @@ describe('crawlSource', () => {
 
     await crawlSource(source)
 
-    expect(fetchMock).not.toHaveBeenCalledWith('https://feeds.example.net/rss.xml')
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      'https://feeds.example.net/rss.xml',
+      expect.anything(),
+    )
     await expect(db.posts.toArray()).resolves.toMatchObject([
       { postUrl: 'https://blog.example.com/local-post', summary: 'Local only.' },
     ])
@@ -360,6 +366,53 @@ describe('crawlSource', () => {
       lastError: 'network down',
     })
     expect(await db.posts.count()).toBe(0)
+  })
+
+  it('aborts and records a source fetch that exceeds 15 seconds', async () => {
+    const realSetTimeout = globalThis.setTimeout
+    let triggerTimeout: (() => void) | undefined
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(
+      ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+        if (timeout === 15_000 && typeof handler === 'function') {
+          triggerTimeout = () => handler(...args)
+          return 0 as unknown as ReturnType<typeof setTimeout>
+        }
+        return Reflect.apply(realSetTimeout, globalThis, [handler, timeout, ...args]) as ReturnType<
+          typeof setTimeout
+        >
+      }) as unknown as typeof setTimeout,
+    )
+    const fetchMock = vi.fn(
+      (_input: URL | RequestInfo, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+            once: true,
+          })
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const source = await addSourceRow('https://slow.example.com/')
+
+    const crawl = crawlSource(source)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://slow.example.com/',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 15_000)
+    if (triggerTimeout === undefined) throw new Error('Expected the fetch timeout callback')
+    triggerTimeout()
+
+    await expect(crawl).resolves.toEqual({
+      ok: false,
+      sourceId: source.id,
+      postsWritten: 0,
+      newPostsWritten: 0,
+      error: 'Fetch timed out after 15 seconds for https://slow.example.com/',
+    })
+    await expect(db.sources.get(source.id)).resolves.toMatchObject({
+      lastError: 'Fetch timed out after 15 seconds for https://slow.example.com/',
+    })
   })
 
   it('skips fetches and marks the source when origin permission is missing', async () => {

@@ -41,6 +41,22 @@ export interface Post {
   crawlDay: string
 }
 
+/** A favorite retained independently from source and post lifecycle operations. */
+export interface FavoritePost {
+  id?: number
+  /** Original post URL and unique favorite identity. */
+  postUrl: string
+  title: string
+  summary: string
+  thumbnail?: string
+  sourceUrl: string
+  /** Snapshot used after the source record is removed. */
+  sourceTitle: string
+  publishedAt?: number
+  crawledAt: number
+  favoritedAt: number
+}
+
 /** Persisted user settings (chrome.storage.local). */
 export interface Settings {
   /** F7: crawl daily at 07:00 local time. */
@@ -56,6 +72,8 @@ export type WorkerRequest =
   | { type: 'SAVE_SOURCE'; url: string; title?: string; permissionGranted?: boolean }
   | { type: 'DELETE_SOURCE'; sourceId: number }
   | { type: 'REQUEST_SOURCE_PERMISSION'; sourceId: number; permissionGranted?: boolean }
+  | { type: 'ADD_FAVORITE'; postId: number }
+  | { type: 'REMOVE_FAVORITE'; postUrl: string }
   | { type: 'GET_SETTINGS' }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<Settings> }
   | { type: 'GET_CRAWL_STATUS' }
@@ -65,6 +83,7 @@ export type WorkerResponse =
   | {
       ok: true
       sourceId?: number
+      favoriteId?: number
       sourcesCrawled?: number
       postsWritten?: number
       newPostsWritten?: number

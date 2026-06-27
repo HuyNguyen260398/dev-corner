@@ -5,6 +5,7 @@ import { POST_RETENTION_CRAWL_DAYS, pruneOldPosts } from '../../src/lib/prune'
 import type { Post } from '../../src/lib/types'
 
 beforeEach(async () => {
+  await db.favoritePosts.clear()
   await db.posts.clear()
   await db.sources.clear()
 })
