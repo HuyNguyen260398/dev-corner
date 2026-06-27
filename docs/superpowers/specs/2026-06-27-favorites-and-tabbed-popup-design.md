@@ -1,7 +1,7 @@
 # Favorites and Tabbed Popup Design
 
-**Date:** 2026-06-27  
-**Status:** Approved for implementation planning  
+**Date:** 2026-06-27
+**Status:** Approved for implementation planning
 **Owner:** Huy
 
 ## Summary
