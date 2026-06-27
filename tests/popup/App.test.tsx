@@ -122,6 +122,15 @@ describe('App digest preview', () => {
       expect(link.getAttribute('target')).toBe('_blank')
       expect(within(item).getByText(/^Summary \d$/)).toBeTruthy()
     }
+
+    const navigation = screen.getByRole('navigation', { name: 'Main views' })
+    expect(within(navigation).getAllByRole('button')).toHaveLength(3)
+    expect(screen.getByRole('button', { name: 'Daily Posts' }).getAttribute('aria-current')).toBe(
+      'page',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Add Post 1 to favorites' }).getAttribute('aria-pressed'),
+    ).toBe('false')
   })
 
   it('shows an empty state when no sources have been saved', async () => {

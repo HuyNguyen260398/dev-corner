@@ -50,11 +50,13 @@ a {
 }
 
 .popup-shell {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 600px;
-  flex-direction: column;
-  gap: 14px;
-  padding: 16px;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
   background: rgba(11, 17, 32, 0.96);
 }
 
@@ -65,14 +67,15 @@ a {
 .post-card,
 .post-meta,
 .section-heading,
-.source-list li,
-.action-bar {
+.source-list li {
   display: flex;
   align-items: center;
 }
 
 .topbar {
   justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid #263244;
 }
 
 .brand-lockup {
@@ -129,7 +132,6 @@ a {
 
 .icon-button,
 .primary-action,
-.secondary-action,
 .mini-button {
   min-width: 44px;
   min-height: 44px;
@@ -152,7 +154,6 @@ a {
 }
 
 .icon-button:hover,
-.secondary-action:hover,
 .mini-button:hover {
   border-color: #3f4c63;
   background: #172033;
@@ -160,14 +161,12 @@ a {
 
 .icon-button:active,
 .primary-action:active,
-.secondary-action:active,
 .mini-button:active {
   transform: scale(0.97);
 }
 
 .icon-button svg,
-.primary-action svg,
-.secondary-action svg {
+.primary-action svg {
   width: 18px;
   height: 18px;
   fill: none;
@@ -204,6 +203,7 @@ a {
 
 .digest-panel,
 .sources-panel,
+.favorites-panel,
 .alert {
   border: 1px solid #263244;
   border-radius: 8px;
@@ -212,11 +212,19 @@ a {
 
 .digest-panel {
   display: flex;
-  flex: 1;
   min-height: 0;
   flex-direction: column;
   gap: 14px;
-  padding: 14px;
+}
+
+.tab-panel {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.favorites-panel h1 {
+  margin-bottom: 14px;
 }
 
 .hero-copy {
@@ -364,6 +372,48 @@ h2 {
   background: #172033;
 }
 
+.favorite-button {
+  display: inline-grid;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #111827;
+  color: #94a3b8;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.favorite-button:hover:not(:disabled) {
+  border-color: #64748b;
+  color: #e2e8f0;
+}
+
+.favorite-button.is-favorite {
+  border-color: rgba(34, 197, 94, 0.68);
+  background: rgba(34, 197, 94, 0.14);
+  color: #22c55e;
+}
+
+.favorite-button:disabled {
+  opacity: 0.5;
+}
+
+.favorite-button svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .post-card img,
 .thumbnail-fallback {
   width: 48px;
@@ -380,6 +430,7 @@ h2 {
 
 .post-content {
   min-width: 0;
+  flex: 1;
 }
 
 .post-content h2 {
@@ -478,6 +529,15 @@ h2 {
   line-height: 1.45;
 }
 
+.popup-shell > .alert {
+  position: absolute;
+  z-index: 2;
+  top: 72px;
+  right: 16px;
+  left: 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+}
+
 .alert p {
   margin: 0;
 }
@@ -488,9 +548,10 @@ h2 {
 }
 
 .sources-panel {
-  max-height: 174px;
-  overflow: auto;
-  padding: 12px;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .section-heading {
@@ -575,21 +636,9 @@ h2 {
   font-weight: 800;
 }
 
-.action-bar {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  gap: 8px;
-  border: 1px solid #263244;
-  border-radius: 8px;
-  padding: 10px;
-  background: rgba(17, 24, 39, 0.96);
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.24);
-}
-
-.primary-action,
-.secondary-action {
+.primary-action {
   display: inline-flex;
+  width: 100%;
   align-items: center;
   justify-content: center;
   gap: 7px;
@@ -599,7 +648,6 @@ h2 {
 }
 
 .primary-action {
-  flex: 1;
   border-color: #22c55e;
   background: #22c55e;
   color: #052e16;
@@ -609,14 +657,51 @@ h2 {
   background: #4ade80;
 }
 
-.secondary-action {
-  background: #0f172a;
+.crawl-note {
+  line-height: 1.15;
+}
+
+.bottom-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid #263244;
+  background: #111827;
+}
+
+.bottom-nav button {
+  display: grid;
+  min-height: 58px;
+  place-items: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.bottom-nav button:hover {
+  background: #172033;
   color: #e2e8f0;
 }
 
-.crawl-note {
-  width: 66px;
-  line-height: 1.15;
+.bottom-nav button[aria-current='page'] {
+  background: #172033;
+  color: #86efac;
+}
+
+.bottom-nav svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .sr-only {
