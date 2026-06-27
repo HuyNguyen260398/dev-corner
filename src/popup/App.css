@@ -15,7 +15,7 @@ html,
 body,
 #root {
   width: 400px;
-  min-height: 600px;
+  height: 600px;
   margin: 0;
 }
 
@@ -53,7 +53,7 @@ a {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: 600px;
+  height: 100%;
   gap: 0;
   padding: 0;
   overflow: hidden;
