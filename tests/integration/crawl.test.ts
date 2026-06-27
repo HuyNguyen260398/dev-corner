@@ -380,7 +380,7 @@ describe('crawlSource', () => {
         return Reflect.apply(realSetTimeout, globalThis, [handler, timeout, ...args]) as ReturnType<
           typeof setTimeout
         >
-      }) as typeof setTimeout,
+      }) as unknown as typeof setTimeout,
     )
     const fetchMock = vi.fn(
       (_input: URL | RequestInfo, init?: RequestInit) =>
