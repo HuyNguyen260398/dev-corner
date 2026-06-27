@@ -41,6 +41,22 @@ export interface Post {
   crawlDay: string
 }
 
+/** A favorite retained independently from source and post lifecycle operations. */
+export interface FavoritePost {
+  id?: number
+  /** Original post URL and unique favorite identity. */
+  postUrl: string
+  title: string
+  summary: string
+  thumbnail?: string
+  sourceUrl: string
+  /** Snapshot used after the source record is removed. */
+  sourceTitle: string
+  publishedAt?: number
+  crawledAt: number
+  favoritedAt: number
+}
+
 /** Persisted user settings (chrome.storage.local). */
 export interface Settings {
   /** F7: crawl daily at 07:00 local time. */

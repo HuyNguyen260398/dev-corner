@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { Post, Source } from './types'
+import type { FavoritePost, Post, Source } from './types'
 
 // IndexedDB is the single source of truth. The service worker writes; the popup
 // reads live via useLiveQuery. `&url` / `&postUrl` are unique so re-crawls upsert
@@ -7,12 +7,18 @@ import type { Post, Source } from './types'
 export class DevCornerDB extends Dexie {
   sources!: Table<Source, number>
   posts!: Table<Post, number>
+  favoritePosts!: Table<FavoritePost, number>
 
-  constructor() {
-    super('dev-corner')
+  constructor(name = 'dev-corner') {
+    super(name)
     this.version(1).stores({
       sources: '++id, &url, feedUrl, lastCrawledAt',
       posts: '++id, sourceId, &postUrl, crawlDay, publishedAt',
+    })
+    this.version(2).stores({
+      sources: '++id, &url, feedUrl, lastCrawledAt',
+      posts: '++id, sourceId, &postUrl, crawlDay, publishedAt',
+      favoritePosts: '++id, &postUrl, favoritedAt, publishedAt, sourceUrl',
     })
   }
 }
