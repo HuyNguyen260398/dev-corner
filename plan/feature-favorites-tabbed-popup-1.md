@@ -24,7 +24,7 @@ tags: [feature, indexeddb, dexie, react, popup, accessibility, testing]
 
 ![Status: Planned](https://img.shields.io/badge/status-Planned-blue)
 
-This plan implements the approved [favorites and tabbed popup design](../docs/superpowers/specs/2026-06-27-favorites-and-tabbed-popup-design.md). It is one cohesive increment: UI work depends on the favorite schema and typed worker boundary, while the worker behavior depends on the persistence functions. Complete tasks in numeric order and create one passing commit per task.
+This plan implements the approved [favorites and tabbed popup design](../docs/superpowers/specs/2026-06-27-favorites-and-tabbed-popup-design.md). It is one cohesive increment: UI work depends on the favorite schema and typed worker boundary, while the worker behavior depends on the persistence functions. Complete tasks in numeric order. Each task requires its own passing commit and an immediate user-facing completion update before work starts on the next task.
 
 ## Execution Rules
 
@@ -34,6 +34,24 @@ This plan implements the approved [favorites and tabbed popup design](../docs/su
 - Do not change `src/lib/selection.ts`, crawl behavior, retention policy, manifest permissions, or network behavior.
 - Keep all `src/lib/` modules free of `chrome.*` calls and all message switches exhaustive.
 - Run the task-specific command before each task commit. Run the complete validation matrix in TASK-008.
+- Never combine multiple tasks in one commit, defer a task commit, or batch multiple task-completion updates.
+- A task is complete only after its validation passes, its dedicated commit is created, and the user has been informed. If validation or commit creation fails, leave the task incomplete and inform the user of the blocker.
+
+## Per-Task Completion Protocol
+
+Apply this protocol at the end of every task, including TASK-008:
+
+1. Run every validation command specified by the task and confirm the expected result.
+2. Stage only the files listed in that task and create exactly one commit with the task's specified commit subject.
+3. Run `git rev-parse --short HEAD` and confirm the resulting commit is the task commit.
+4. Immediately inform the user with a progress update containing:
+   - the task identifier and title;
+   - the short commit hash and commit subject;
+   - the validation commands and whether each passed;
+   - any scope note, risk, or blocker, using `None` when there is nothing to report.
+5. Send the update before starting the next task. The update is informational and does not require a user reply unless it reports a blocker or requests a design decision.
+
+Format every update as five lines labeled `Task`, `Commit`, `Validation`, `Notes`, and `Next`, in that order. The `Task` line must contain the completed task identifier and title. The `Commit` line must contain the short hash and subject. The `Validation` line must name every task command and its result. The `Notes` line must contain either a concrete note or `None`. The `Next` line must name the next task, except TASK-008 must use `Implementation complete`.
 
 ## Dependency Graph
 
@@ -72,6 +90,7 @@ TASK-001 schema/type foundation
 - **GUD-001**: Keep `src/lib/favorites.ts` deterministic except for its injected/default `Date.now()` timestamp.
 - **GUD-002**: Keep UI units focused: `App` orchestrates; tabs render; `PostCard` and `BottomNav` remain presentational.
 - **PAT-001**: One task produces one passing commit using the commit subject defined in that task.
+- **PAT-002**: One task produces one immediate user-facing completion update after its commit and before the next task begins.
 
 ## 2. Implementation Steps
 
@@ -213,12 +232,14 @@ Run: `pnpm test -- tests/lib/db.test.ts tests/lib/sources.test.ts tests/lib/prun
 
 Expected: all selected tests PASS and the migration test reports one source, one post, and zero favorites.
 
-- [ ] **Step 5: Commit TASK-001**
+- [ ] **Step 5: Commit TASK-001 and inform the user**
 
 ```bash
 git add src/lib/types.ts src/lib/db.ts tests/lib/db.test.ts
 git commit -m "feat: add favorite posts schema"
 ```
+
+After the commit, execute the Per-Task Completion Protocol and send the TASK-001 update before starting TASK-002.
 
 ### TASK-002: Favorite Persistence API
 
@@ -412,12 +433,14 @@ Run: `pnpm test -- tests/lib/favorites.test.ts tests/lib/db.test.ts tests/lib/pr
 
 Expected: all selected tests PASS; the duplicate-add test reports one favorite and unchanged `favoritedAt`.
 
-- [ ] **Step 6: Commit TASK-002**
+- [ ] **Step 6: Commit TASK-002 and inform the user**
 
 ```bash
 git add src/lib/favorites.ts tests/lib/favorites.test.ts tests/lib/prune.test.ts tests/lib/sources.test.ts tests/popup/App.test.tsx
 git commit -m "feat: add favorite persistence operations"
 ```
+
+After the commit, execute the Per-Task Completion Protocol and send the TASK-002 update before starting TASK-003.
 
 ### Implementation Phase 2: Typed Service-Worker Boundary
 
@@ -576,12 +599,14 @@ Run: `pnpm typecheck`
 
 Expected: exit code 0; every request switch remains exhaustive.
 
-- [ ] **Step 6: Commit TASK-003**
+- [ ] **Step 6: Commit TASK-003 and inform the user**
 
 ```bash
 git add src/lib/types.ts src/background/index.ts tests/background/favorites-messages.test.ts
 git commit -m "feat: handle favorite worker messages"
 ```
+
+After the commit, execute the Per-Task Completion Protocol and send the TASK-003 update before starting TASK-004.
 
 ### Implementation Phase 3: Tabbed Popup
 
@@ -724,12 +749,14 @@ Run: `pnpm lint -- src/popup/BottomNav.tsx src/popup/PostCard.tsx tests/popup/co
 
 Expected: exit code 0.
 
-- [ ] **Step 6: Commit TASK-004**
+- [ ] **Step 6: Commit TASK-004 and inform the user**
 
 ```bash
 git add src/popup/BottomNav.tsx src/popup/PostCard.tsx tests/popup/components.test.tsx
 git commit -m "feat: add popup navigation and post card"
 ```
+
+After the commit, execute the Per-Task Completion Protocol and send the TASK-004 update before starting TASK-005.
 
 ### TASK-005: Daily Posts and Favorite Posts Panels
 
@@ -848,12 +875,14 @@ Run: `pnpm test -- tests/popup/App.test.tsx tests/popup/components.test.tsx`
 
 Expected: Daily/Favorite tab, empty-state, request-shape, pending-state, and failure tests PASS.
 
-- [ ] **Step 7: Commit TASK-005**
+- [ ] **Step 7: Commit TASK-005 and inform the user**
 
 ```bash
 git add src/popup/DailyPostsTab.tsx src/popup/FavoritePostsTab.tsx src/popup/App.tsx tests/popup/App.test.tsx
 git commit -m "feat: add daily and favorite post tabs"
 ```
+
+After the commit, execute the Per-Task Completion Protocol and send the TASK-005 update before starting TASK-006.
 
 ### TASK-006: Sources Panel and App Orchestration
 
@@ -929,12 +958,14 @@ Run: `pnpm typecheck`
 
 Expected: exit code 0 with no optional-property or unused-symbol errors.
 
-- [ ] **Step 6: Commit TASK-006**
+- [ ] **Step 6: Commit TASK-006 and inform the user**
 
 ```bash
 git add src/popup/SourcesTab.tsx src/popup/App.tsx tests/popup/App.test.tsx
 git commit -m "refactor: organize popup into three tabs"
 ```
+
+After the commit, execute the Per-Task Completion Protocol and send the TASK-006 update before starting TASK-007.
 
 ### Implementation Phase 4: Styling, Documentation, and Release Validation
 
@@ -1059,12 +1090,14 @@ Run: `pnpm lint && pnpm typecheck`
 
 Expected: both commands exit 0.
 
-- [ ] **Step 5: Commit TASK-007**
+- [ ] **Step 5: Commit TASK-007 and inform the user**
 
 ```bash
 git add src/popup/App.css docs/DEVELOPMENT_PLAN.md tests/popup/App.test.tsx
 git commit -m "feat: style and document tabbed favorites UI"
 ```
+
+After the commit, execute the Per-Task Completion Protocol and send the TASK-007 update before starting TASK-008.
 
 ### TASK-008: Complete Validation and Plan Closure
 
@@ -1121,7 +1154,7 @@ Load `dist/` from `chrome://extensions` in Developer mode and verify this matrix
 
 Confirm all seven `AGENTS.md` non-negotiable constraints remain satisfied. Specifically verify no direct popup writes, no `chrome.*` call under `src/lib/`, no new network code, no new permission, and exhaustive message handling.
 
-- [ ] **Step 5: Mark plan tasks complete and commit closure**
+- [ ] **Step 5: Mark plan tasks complete, commit closure, and inform the user**
 
 Set each completed table row to `✅` with date `2026-06-27` or the actual completion date, update front matter status to `'Completed'`, and update `last_updated`. Then commit only the plan status update:
 
@@ -1129,6 +1162,8 @@ Set each completed table row to `✅` with date `2026-06-27` or the actual compl
 git add plan/feature-favorites-tabbed-popup-1.md
 git commit -m "docs: complete favorites implementation plan"
 ```
+
+After the commit, execute the Per-Task Completion Protocol and send the final TASK-008 update with `Next: Implementation complete`.
 
 ## 3. Alternatives
 
