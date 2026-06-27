@@ -79,6 +79,43 @@ describe('App scheduling controls', () => {
       })
     })
   })
+
+  it('clears refresh progress and reports a rejected crawl message', async () => {
+    let rejectCrawl!: (reason: unknown) => void
+    const pendingCrawl = new Promise<WorkerResponse>((_resolve, reject) => {
+      rejectCrawl = reject
+    })
+    const sendMessage = chrome.runtime.sendMessage as unknown as ReturnType<typeof vi.fn>
+    sendMessage.mockImplementation((request: WorkerRequest) =>
+      request.type === 'CRAWL_ALL'
+        ? pendingCrawl
+        : Promise.resolve(
+            responses[request.type] ?? { ok: false, error: `Unhandled ${request.type}` },
+          ),
+    )
+
+    render(<App />)
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'GET_CRAWL_STATUS' })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh digest' }))
+    expect(await screen.findByText('Refreshing latest posts...')).toBeTruthy()
+
+    rejectCrawl(new Error('Service worker disconnected.'))
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Service worker disconnected.',
+    )
+    await waitFor(() => {
+      expect(screen.queryByText('Refreshing latest posts...')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Refresh digest' })).toHaveProperty(
+        'disabled',
+        false,
+      )
+    })
+  })
 })
 
 describe('App digest preview', () => {

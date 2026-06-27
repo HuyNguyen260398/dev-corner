@@ -105,14 +105,13 @@ export function App() {
   async function refreshNow() {
     setError(null)
     setCrawlInProgress(true)
-    const res = await send({ type: 'CRAWL_ALL' })
-    if (!res.ok) setError(res.error)
-    const status = await send({ type: 'GET_CRAWL_STATUS' })
-    if (status.ok && status.crawlInProgress !== undefined) {
-      setCrawlInProgress(status.crawlInProgress)
-    } else {
+    try {
+      const response = await send({ type: 'CRAWL_ALL' })
+      if (!response.ok) setError(response.error)
+    } catch (error) {
+      setError(errorMessage(error))
+    } finally {
       setCrawlInProgress(false)
-      if (!status.ok) setError(status.error)
     }
   }
 
