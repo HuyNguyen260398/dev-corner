@@ -1,7 +1,7 @@
 // Daily digest and source management UI. The popup never crawls (GUD-002): it
 // reads IndexedDB live and routes saves/deletes/refreshes through the worker via
 // the typed message boundary (GUD-003).
-import { useEffect, useRef, useState, type Ref } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
 import { listFavorites } from '../lib/favorites'
@@ -11,6 +11,7 @@ import type { Post, Settings, Source, WorkerRequest, WorkerResponse } from '../l
 import { BottomNav, type PopupTab } from './BottomNav'
 import { DailyPostsTab } from './DailyPostsTab'
 import { FavoritePostsTab } from './FavoritePostsTab'
+import { SourcesTab } from './SourcesTab'
 import './App.css'
 
 function send(request: WorkerRequest): Promise<WorkerResponse> {
@@ -31,7 +32,6 @@ export function App() {
   const [crawlInProgress, setCrawlInProgress] = useState(false)
   const [activeTab, setActiveTab] = useState<PopupTab>('daily')
   const [pendingFavoriteUrls, setPendingFavoriteUrls] = useState<ReadonlySet<string>>(new Set())
-  const sourcesSectionRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     void loadSchedulingState()
@@ -230,119 +230,27 @@ export function App() {
         />
       )}
 
+      {activeTab === 'sources' && (
+        <SourcesTab
+          sources={sources}
+          settings={settings}
+          lastCrawl={lastCrawl}
+          onSaveCurrentPage={() => void saveCurrentPage()}
+          onRemoveSource={(id) => void remove(id)}
+          onRequestPermission={(source) => void requestPermission(source)}
+          onSetDailyCron={(enabled) => void setDailyCron(enabled)}
+          onSetDailyNotifications={(enabled) => void setDailyNotifications(enabled)}
+        />
+      )}
+
       {error && (
         <p className="alert" role="alert">
           {error}
         </p>
       )}
 
-      <label className="schedule-toggle">
-        <input
-          type="checkbox"
-          checked={settings?.enableDailyCron ?? false}
-          disabled={settings === null}
-          onChange={(event) => void setDailyCron(event.currentTarget.checked)}
-        />
-        <span aria-hidden="true" />
-        <span>Daily 07:00 crawl</span>
-      </label>
-
-      <label className="schedule-toggle">
-        <input
-          type="checkbox"
-          checked={settings?.enableDailyNotifications ?? false}
-          disabled={settings === null}
-          onChange={(event) => void setDailyNotifications(event.currentTarget.checked)}
-        />
-        <span aria-hidden="true" />
-        <span>Daily notifications</span>
-      </label>
-
-      <SourceList
-        ref={sourcesSectionRef}
-        sources={sources}
-        remove={remove}
-        requestPermission={requestPermission}
-      />
-
-      <footer className="action-bar" aria-label="Primary actions">
-        <button type="button" className="primary-action" onClick={() => void saveCurrentPage()}>
-          <PlusIcon />
-          <span>Subscribe</span>
-        </button>
-        <p className="crawl-note">Last crawl {lastCrawl}</p>
-      </footer>
-
       <BottomNav activeTab={activeTab} onSelect={setActiveTab} />
     </main>
-  )
-}
-
-type SourceListProps = {
-  sources: Source[] | undefined
-  remove: (id: number) => Promise<void>
-  requestPermission: (source: Source & { id: number }) => Promise<void>
-}
-
-function SourceList({
-  ref,
-  sources,
-  remove,
-  requestPermission,
-}: SourceListProps & { ref: Ref<HTMLElement> }) {
-  if (sources === undefined || sources.length === 0) return null
-
-  return (
-    <section className="sources-panel" aria-labelledby="sources-heading" ref={ref} tabIndex={-1}>
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">Library</p>
-          <h2 id="sources-heading">Saved sources</h2>
-        </div>
-        <span>{sources.length}</span>
-      </div>
-      <ul className="source-list">
-        {sources.map((source) => (
-          <li key={source.id}>
-            <span className="source-favicon" aria-hidden="true">
-              {sourceInitial(source)}
-            </span>
-            <span className="source-copy">
-              <span className="source-title" title={source.url}>
-                {source.title}
-              </span>
-              <span className="source-url" title={source.url}>
-                {source.url}
-              </span>
-            </span>
-            {source.permissionState === 'needsPermission' && (
-              <>
-                <span className="permission-chip">Needs permission</span>
-                <button
-                  type="button"
-                  className="mini-button"
-                  onClick={() => {
-                    if (source.id != null) void requestPermission({ ...source, id: source.id })
-                  }}
-                >
-                  Grant permission
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              className="icon-button subtle"
-              onClick={() => void remove(source.id!)}
-              aria-label={`Unsubscribe ${source.title}`}
-              title={`Unsubscribe ${source.title}`}
-            >
-              <BookmarkOffIcon />
-              <span className="sr-only">Unsubscribe</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
   )
 }
 
@@ -374,11 +282,6 @@ function formatToday(date: Date): string {
   }).format(date)
 }
 
-function sourceInitial(source: Source | undefined): string {
-  const label = source?.title ?? 'S'
-  return label.trim().slice(0, 1).toUpperCase() || 'S'
-}
-
 function requestOriginPermission(sourceUrl: string): Promise<boolean> {
   const origin = originPatternForUrl(sourceUrl)
   return new Promise((resolve, reject) => {
@@ -400,24 +303,6 @@ function RefreshIcon() {
       <path d="M4 18v-5h5" />
       <path d="M18.5 9A7 7 0 0 0 6.2 6.7L4 9" />
       <path d="M5.5 15A7 7 0 0 0 17.8 17.3L20 15" />
-    </svg>
-  )
-}
-
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
-    </svg>
-  )
-}
-
-function BookmarkOffIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v11" />
-      <path d="M2 2l20 20" />
     </svg>
   )
 }

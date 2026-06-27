@@ -62,6 +62,7 @@ describe('App scheduling controls', () => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'CRAWL_ALL' })
     })
 
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Daily 07:00 crawl' }))
     await waitFor(() => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
@@ -90,7 +91,7 @@ describe('App digest preview', () => {
     expect(screen.getByText('Local only')).toBeTruthy()
     expect(screen.getByText('07:00 crawl')).toBeTruthy()
     expect(screen.getByText('5 min read')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Subscribe' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Subscribe' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Sources' })).toBeTruthy()
   })
 
@@ -265,6 +266,54 @@ describe('App favorite tabs', () => {
   })
 })
 
+describe('App tab ownership', () => {
+  it('selects Daily Posts on every fresh mount', async () => {
+    const firstRender = render(<App />)
+    expect(
+      (await screen.findByRole('button', { name: 'Daily Posts' })).getAttribute('aria-current'),
+    ).toBe('page')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Favorite Posts' }))
+    expect(screen.getByRole('button', { name: 'Favorite Posts' }).getAttribute('aria-current')).toBe(
+      'page',
+    )
+    firstRender.unmount()
+
+    render(<App />)
+    expect(screen.getByRole('button', { name: 'Daily Posts' }).getAttribute('aria-current')).toBe(
+      'page',
+    )
+  })
+
+  it('keeps source and automation controls under Sources only', async () => {
+    await db.sources.add(
+      source(1, {
+        permissionState: 'needsPermission',
+        lastCrawledAt: Date.parse('2026-06-27T09:00:00Z'),
+      }),
+    )
+
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Morning brief' })
+
+    expect(screen.queryByRole('checkbox', { name: 'Daily 07:00 crawl' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: 'Daily notifications' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Subscribe' })).toBeNull()
+    expect(screen.queryByText('https://source-1.test')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Grant permission' })).toBeNull()
+    expect(screen.queryByText(/Last crawl/)).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+
+    expect(await screen.findByRole('checkbox', { name: 'Daily 07:00 crawl' })).toBeTruthy()
+    expect(screen.getByRole('checkbox', { name: 'Daily notifications' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Subscribe' })).toBeTruthy()
+    expect(screen.getByText('https://source-1.test')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Grant permission' })).toBeTruthy()
+    expect(screen.getByText(/Last crawl/)).toBeTruthy()
+  })
+})
+
 describe('App source permissions', () => {
   it('requests current-page permission in the popup before saving a source', async () => {
     const queryTabs = chrome.tabs.query as unknown as ReturnType<typeof vi.fn>
@@ -273,6 +322,7 @@ describe('App source permissions', () => {
     ])
 
     render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Sources' }))
 
     fireEvent.click(await screen.findByRole('button', { name: 'Subscribe' }))
 
@@ -298,6 +348,7 @@ describe('App source permissions', () => {
     }
 
     render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Sources' }))
 
     const sourceItem = await screen.findByText('Source 1')
     const sourceRow = sourceItem.closest('li')
@@ -323,6 +374,7 @@ describe('App source permissions', () => {
     await db.sources.add(source(1))
 
     render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Sources' }))
 
     const sourceItem = await screen.findByText('Source 1')
     const sourceRow = sourceItem.closest('li')
@@ -334,6 +386,7 @@ describe('App source permissions', () => {
     await db.sources.add(source(1))
 
     render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Sources' }))
 
     const sourceItem = await screen.findByText('Source 1')
     const sourceRow = sourceItem.closest('li')
