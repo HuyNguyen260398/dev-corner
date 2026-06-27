@@ -196,6 +196,15 @@ export function App() {
         <div className="topbar-actions" aria-label="Digest actions">
           <button
             type="button"
+            className="icon-button"
+            onClick={() => void saveCurrentPage()}
+            aria-label="Subscribe current page"
+            title="Subscribe current page"
+          >
+            <SubscribeIcon />
+          </button>
+          <button
+            type="button"
             className="icon-button is-live"
             onClick={() => void refreshNow()}
             disabled={crawlInProgress}
@@ -293,6 +302,16 @@ function requestOriginPermission(sourceUrl: string): Promise<boolean> {
       resolve(granted)
     })
   })
+}
+
+function SubscribeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
+      <path d="M12 7v6" />
+      <path d="M9 10h6" />
+    </svg>
+  )
 }
 
 function RefreshIcon() {
