@@ -8,6 +8,7 @@ import { App } from '../../src/popup/App'
 let responses: Partial<Record<WorkerRequest['type'], WorkerResponse>>
 
 beforeEach(async () => {
+  await db.favoritePosts.clear()
   await db.posts.clear()
   await db.sources.clear()
   responses = {
