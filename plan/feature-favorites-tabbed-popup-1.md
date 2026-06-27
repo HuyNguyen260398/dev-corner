@@ -4,7 +4,7 @@ version: 1.0
 date_created: 2026-06-27
 last_updated: 2026-06-27
 owner: Huy Nguyen
-status: 'Planned'
+status: 'In progress'
 tags: [feature, indexeddb, dexie, react, popup, accessibility, testing]
 ---
 
@@ -22,7 +22,7 @@ tags: [feature, indexeddb, dexie, react, popup, accessibility, testing]
 
 # Introduction
 
-![Status: Planned](https://img.shields.io/badge/status-Planned-blue)
+![Status: In progress](https://img.shields.io/badge/status-In%20progress-yellow)
 
 This plan implements the approved [favorites and tabbed popup design](../docs/superpowers/specs/2026-06-27-favorites-and-tabbed-popup-design.md). It is one cohesive increment: UI work depends on the favorite schema and typed worker boundary, while the worker behavior depends on the persistence functions. Complete tasks in numeric order. Each task requires its own passing commit and an immediate user-facing completion update before work starts on the next task.
 
@@ -100,8 +100,8 @@ TASK-001 schema/type foundation
 
 | Task | Description | Depends On | Completed | Date |
 |------|-------------|------------|-----------|------|
-| TASK-001 | Add `FavoritePost`, parameterized test DB construction, Dexie version 2, and a migration test. | None | | |
-| TASK-002 | Add tested favorite snapshot, idempotency, ordering, fallback, and retention-independent operations. | TASK-001 | | |
+| TASK-001 | Add `FavoritePost`, parameterized test DB construction, Dexie version 2, and a migration test. | None | ✅ | 2026-06-27 |
+| TASK-002 | Add tested favorite snapshot, idempotency, ordering, fallback, and retention-independent operations. | TASK-001 | ✅ | 2026-06-27 |
 
 ### TASK-001: Favorite Type and Dexie Version 2
 
@@ -448,7 +448,7 @@ After the commit, execute the Per-Task Completion Protocol and send the TASK-002
 
 | Task | Description | Depends On | Completed | Date |
 |------|-------------|------------|-----------|------|
-| TASK-003 | Add favorite request/response types, service-worker handlers, and message-level tests. | TASK-002 | | |
+| TASK-003 | Add favorite request/response types, service-worker handlers, and message-level tests. | TASK-002 | ✅ | 2026-06-27 |
 
 ### TASK-003: Worker Favorite Messages
 
@@ -614,9 +614,9 @@ After the commit, execute the Per-Task Completion Protocol and send the TASK-003
 
 | Task | Description | Depends On | Completed | Date |
 |------|-------------|------------|-----------|------|
-| TASK-004 | Add tested presentational `BottomNav` and `PostCard` components. | TASK-003 | | |
-| TASK-005 | Add tested Daily Posts and Favorite Posts tab panels. | TASK-004 | | |
-| TASK-006 | Add Sources tab and refactor `App` into the three-tab orchestrator. | TASK-005 | | |
+| TASK-004 | Add tested presentational `BottomNav` and `PostCard` components. | TASK-003 | ✅ | 2026-06-27 |
+| TASK-005 | Add tested Daily Posts and Favorite Posts tab panels. | TASK-004 | ✅ | 2026-06-27 |
+| TASK-006 | Add Sources tab and refactor `App` into the three-tab orchestrator. | TASK-005 | ✅ | 2026-06-27 |
 
 ### TASK-004: Shared Bottom Navigation and Post Card
 
@@ -973,7 +973,7 @@ After the commit, execute the Per-Task Completion Protocol and send the TASK-006
 
 | Task | Description | Depends On | Completed | Date |
 |------|-------------|------------|-----------|------|
-| TASK-007 | Update popup CSS and authoritative development documentation. | TASK-006 | | |
+| TASK-007 | Update popup CSS and authoritative development documentation. | TASK-006 | ✅ | 2026-06-27 |
 | TASK-008 | Run automated/manual validation and record completion evidence. | TASK-007 | | |
 
 ### TASK-007: Popup Styling and Documentation
