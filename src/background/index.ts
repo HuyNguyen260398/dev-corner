@@ -11,6 +11,7 @@ import {
 } from './permissions'
 import { configureDailyAlarm, handleDailyAlarm } from './scheduler'
 import { getSettings, updateSettings } from './settings'
+import { addFavorite, removeFavorite } from '../lib/favorites'
 import { addSource, deleteSource } from '../lib/sources'
 import type { WorkerRequest, WorkerResponse } from '../lib/types'
 
@@ -95,6 +96,16 @@ chrome.runtime.onMessage.addListener(
       case 'CRAWL_ALL':
         crawlAll()
           .then((result) => sendResponse(result))
+          .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
+        return true
+      case 'ADD_FAVORITE':
+        addFavorite(message.postId)
+          .then((favoriteId) => sendResponse({ ok: true, favoriteId }))
+          .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
+        return true
+      case 'REMOVE_FAVORITE':
+        removeFavorite(message.postUrl)
+          .then(() => sendResponse({ ok: true }))
           .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
         return true
       case 'GET_SETTINGS':

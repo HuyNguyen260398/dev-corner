@@ -72,6 +72,8 @@ export type WorkerRequest =
   | { type: 'SAVE_SOURCE'; url: string; title?: string; permissionGranted?: boolean }
   | { type: 'DELETE_SOURCE'; sourceId: number }
   | { type: 'REQUEST_SOURCE_PERMISSION'; sourceId: number; permissionGranted?: boolean }
+  | { type: 'ADD_FAVORITE'; postId: number }
+  | { type: 'REMOVE_FAVORITE'; postUrl: string }
   | { type: 'GET_SETTINGS' }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<Settings> }
   | { type: 'GET_CRAWL_STATUS' }
@@ -81,6 +83,7 @@ export type WorkerResponse =
   | {
       ok: true
       sourceId?: number
+      favoriteId?: number
       sourcesCrawled?: number
       postsWritten?: number
       newPostsWritten?: number
