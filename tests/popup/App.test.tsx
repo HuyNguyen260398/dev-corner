@@ -155,6 +155,116 @@ describe('App digest preview', () => {
   })
 })
 
+describe('App favorite tabs', () => {
+  it('opens Daily Posts and shows favorite membership for a daily post', async () => {
+    vi.setSystemTime(new Date('2026-06-27T10:00:00+07:00'))
+    await db.sources.add(source(1))
+    await db.posts.add(digestPost(1, '2026-06-27'))
+    await db.favoritePosts.add(favoritePost())
+
+    render(<App />)
+
+    expect(
+      (await screen.findByRole('button', { name: 'Daily Posts' })).getAttribute('aria-current'),
+    ).toBe('page')
+    expect(
+      (
+        await screen.findByRole('button', { name: 'Remove Post 1 from favorites' })
+      ).getAttribute('aria-pressed'),
+    ).toBe('true')
+  })
+
+  it('shows persisted favorite snapshots in Favorite Posts', async () => {
+    await db.favoritePosts.add(favoritePost())
+
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Favorite Posts' }))
+
+    expect(await screen.findByRole('link', { name: 'Post 1' })).toBeTruthy()
+    expect(screen.queryByText('No favorite posts yet.')).toBeNull()
+  })
+
+  it('shows guidance when Favorite Posts is empty', async () => {
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Favorite Posts' }))
+
+    expect(await screen.findByText('No favorite posts yet.')).toBeTruthy()
+    expect(screen.getByText('Add favorites from Daily Posts to keep them here.')).toBeTruthy()
+  })
+
+  it('sends exact typed add and remove favorite requests', async () => {
+    vi.setSystemTime(new Date('2026-06-27T10:00:00+07:00'))
+    responses.ADD_FAVORITE = { ok: true, favoriteId: 1 }
+    responses.REMOVE_FAVORITE = { ok: true }
+    await db.sources.add(source(1))
+    await db.posts.add(digestPost(1, '2026-06-27'))
+
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Post 1 to favorites' }))
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'ADD_FAVORITE',
+        postId: 1,
+      })
+    })
+
+    await db.favoritePosts.add(favoritePost())
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Post 1 from favorites' }))
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        type: 'REMOVE_FAVORITE',
+        postUrl: 'https://post-1.test/',
+      })
+    })
+  })
+
+  it("disables only the pending post's favorite button", async () => {
+    vi.setSystemTime(new Date('2026-06-27T10:00:00+07:00'))
+    await db.sources.bulkAdd(sources(2))
+    await db.posts.bulkAdd([digestPost(1, '2026-06-27'), digestPost(2, '2026-06-27')])
+    let resolveAdd!: (response: WorkerResponse) => void
+    const pendingAdd = new Promise<WorkerResponse>((resolve) => {
+      resolveAdd = resolve
+    })
+    const sendMessage = chrome.runtime.sendMessage as unknown as ReturnType<typeof vi.fn>
+    sendMessage.mockImplementation((request: WorkerRequest) =>
+      request.type === 'ADD_FAVORITE'
+        ? pendingAdd
+        : Promise.resolve(
+            responses[request.type] ?? { ok: false, error: `Unhandled ${request.type}` },
+          ),
+    )
+
+    render(<App />)
+
+    const first = await screen.findByRole('button', { name: 'Add Post 1 to favorites' })
+    const second = screen.getByRole('button', { name: 'Add Post 2 to favorites' })
+    fireEvent.click(first)
+    await waitFor(() => expect(first).toHaveProperty('disabled', true))
+    expect(second).toHaveProperty('disabled', false)
+
+    resolveAdd({ ok: true, favoriteId: 1 })
+    await waitFor(() => expect(first).toHaveProperty('disabled', false))
+  })
+
+  it('keeps the post visible and reports a failed favorite request', async () => {
+    vi.setSystemTime(new Date('2026-06-27T10:00:00+07:00'))
+    responses.ADD_FAVORITE = { ok: false, error: 'Favorite write failed.' }
+    await db.sources.add(source(1))
+    await db.posts.add(digestPost(1, '2026-06-27'))
+
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Post 1 to favorites' }))
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Favorite write failed.',
+    )
+    expect(screen.getByRole('link', { name: 'Post 1' })).toBeTruthy()
+  })
+})
+
 describe('App source permissions', () => {
   it('requests current-page permission in the popup before saving a source', async () => {
     const queryTabs = chrome.tabs.query as unknown as ReturnType<typeof vi.fn>
@@ -248,6 +358,7 @@ function source(id: number, overrides: Partial<Source> = {}): Source {
 
 function digestPost(id: number, crawlDay: string): Post {
   return {
+    id,
     sourceId: id,
     sourceUrl: `https://source-${id}.test`,
     title: `Post ${id}`,
@@ -257,5 +368,19 @@ function digestPost(id: number, crawlDay: string): Post {
     publishedAt: Date.parse(`${crawlDay}T0${id}:00:00Z`),
     crawledAt: Date.parse(`${crawlDay}T09:00:00Z`),
     crawlDay,
+  }
+}
+
+function favoritePost() {
+  return {
+    postUrl: 'https://post-1.test/',
+    title: 'Post 1',
+    summary: 'Summary 1',
+    thumbnail: 'https://post-1.test/thumb.jpg',
+    sourceUrl: 'https://source-1.test',
+    sourceTitle: 'Source 1',
+    publishedAt: Date.parse('2026-06-20T01:00:00Z'),
+    crawledAt: Date.parse('2026-06-20T09:00:00Z'),
+    favoritedAt: Date.parse('2026-06-20T10:00:00Z'),
   }
 }

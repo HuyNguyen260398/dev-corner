@@ -4,10 +4,13 @@
 import { useEffect, useRef, useState, type Ref } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../lib/db'
+import { listFavorites } from '../lib/favorites'
 import { originPatternForUrl } from '../lib/permissions'
-import { selectDigest } from '../lib/selection'
 import { listSources } from '../lib/sources'
 import type { Post, Settings, Source, WorkerRequest, WorkerResponse } from '../lib/types'
+import { BottomNav, type PopupTab } from './BottomNav'
+import { DailyPostsTab } from './DailyPostsTab'
+import { FavoritePostsTab } from './FavoritePostsTab'
 import './App.css'
 
 function send(request: WorkerRequest): Promise<WorkerResponse> {
@@ -22,9 +25,12 @@ export function App() {
   const today = localDateKey(new Date())
   const sources = useLiveQuery(() => listSources(), [])
   const todaysPosts = useLiveQuery(() => db.posts.where('crawlDay').equals(today).toArray(), [today])
+  const favorites = useLiveQuery(() => listFavorites(), [])
   const [error, setError] = useState<string | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [crawlInProgress, setCrawlInProgress] = useState(false)
+  const [activeTab, setActiveTab] = useState<PopupTab>('daily')
+  const [pendingFavoriteUrls, setPendingFavoriteUrls] = useState<ReadonlySet<string>>(new Set())
   const sourcesSectionRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
@@ -143,14 +149,38 @@ export function App() {
     }
   }
 
-  function focusSources() {
-    sourcesSectionRef.current?.focus()
+  async function toggleDailyFavorite(post: Post) {
+    const isFavorite = favorites?.some((favorite) => favorite.postUrl === post.postUrl) ?? false
+    if (isFavorite) {
+      await updateFavorite(post.postUrl, { type: 'REMOVE_FAVORITE', postUrl: post.postUrl })
+      return
+    }
+    if (post.id === undefined) {
+      setError(`Post ${post.postUrl} has no persisted id.`)
+      return
+    }
+    await updateFavorite(post.postUrl, { type: 'ADD_FAVORITE', postId: post.id })
   }
 
-  const sourceCount = sources?.length ?? 0
-  const postCount = todaysPosts?.length ?? 0
+  async function updateFavorite(postUrl: string, request: WorkerRequest) {
+    setError(null)
+    setPendingFavoriteUrls((current) => new Set(current).add(postUrl))
+    try {
+      const response = await send(request)
+      if (!response.ok) setError(response.error)
+    } catch (error) {
+      setError(errorMessage(error))
+    } finally {
+      setPendingFavoriteUrls((current) => {
+        const next = new Set(current)
+        next.delete(postUrl)
+        return next
+      })
+    }
+  }
+
   const lastCrawl = latestCrawlTime(sources)
-  const heroSubtitle = digestSummary(sourceCount, postCount, crawlInProgress)
+  const favoriteUrls = new Set(favorites?.map((favorite) => favorite.postUrl) ?? [])
 
   return (
     <main className="popup-shell">
@@ -178,56 +208,55 @@ export function App() {
         </div>
       </header>
 
-      <section className="digest-panel" aria-labelledby="digest-heading">
-        <div className="hero-copy">
-          <div>
-            <p className="eyebrow accent">Daily digest</p>
-            <h1 id="digest-heading">Morning brief</h1>
-          </div>
-          {heroSubtitle && <p className="hero-subtitle">{heroSubtitle}</p>}
-        </div>
-
-        <div className="status-pills" aria-label="Digest status">
-          <span>Local only</span>
-          <span>{settings?.enableDailyCron !== false ? '07:00 crawl' : 'Manual crawl'}</span>
-          <span>5 min read</span>
-        </div>
-
-        <label className="schedule-toggle">
-          <input
-            type="checkbox"
-            checked={settings?.enableDailyCron ?? false}
-            disabled={settings === null}
-            onChange={(event) => void setDailyCron(event.currentTarget.checked)}
-          />
-          <span aria-hidden="true" />
-          <span>Daily 07:00 crawl</span>
-        </label>
-
-        <label className="schedule-toggle">
-          <input
-            type="checkbox"
-            checked={settings?.enableDailyNotifications ?? false}
-            disabled={settings === null}
-            onChange={(event) => void setDailyNotifications(event.currentTarget.checked)}
-          />
-          <span aria-hidden="true" />
-          <span>Daily notifications</span>
-        </label>
-
-        <DigestPreview
+      {activeTab === 'daily' && (
+        <DailyPostsTab
           crawlInProgress={crawlInProgress}
           posts={todaysPosts}
           sources={sources}
           today={today}
+          favoriteUrls={favoriteUrls}
+          pendingUrls={pendingFavoriteUrls}
+          onToggleFavorite={(post) => void toggleDailyFavorite(post)}
         />
-      </section>
+      )}
+
+      {activeTab === 'favorites' && (
+        <FavoritePostsTab
+          favorites={favorites}
+          pendingUrls={pendingFavoriteUrls}
+          onRemoveFavorite={(postUrl) =>
+            void updateFavorite(postUrl, { type: 'REMOVE_FAVORITE', postUrl })
+          }
+        />
+      )}
 
       {error && (
         <p className="alert" role="alert">
           {error}
         </p>
       )}
+
+      <label className="schedule-toggle">
+        <input
+          type="checkbox"
+          checked={settings?.enableDailyCron ?? false}
+          disabled={settings === null}
+          onChange={(event) => void setDailyCron(event.currentTarget.checked)}
+        />
+        <span aria-hidden="true" />
+        <span>Daily 07:00 crawl</span>
+      </label>
+
+      <label className="schedule-toggle">
+        <input
+          type="checkbox"
+          checked={settings?.enableDailyNotifications ?? false}
+          disabled={settings === null}
+          onChange={(event) => void setDailyNotifications(event.currentTarget.checked)}
+        />
+        <span aria-hidden="true" />
+        <span>Daily notifications</span>
+      </label>
 
       <SourceList
         ref={sourcesSectionRef}
@@ -241,118 +270,11 @@ export function App() {
           <PlusIcon />
           <span>Subscribe</span>
         </button>
-        <button type="button" className="secondary-action" onClick={focusSources}>
-          <ListIcon />
-          <span>Sources</span>
-        </button>
         <p className="crawl-note">Last crawl {lastCrawl}</p>
       </footer>
+
+      <BottomNav activeTab={activeTab} onSelect={setActiveTab} />
     </main>
-  )
-}
-
-function DigestPreview({
-  crawlInProgress,
-  posts,
-  sources,
-  today,
-}: {
-  crawlInProgress: boolean
-  posts: Post[] | undefined
-  sources: Source[] | undefined
-  today: string
-}) {
-  if (crawlInProgress) {
-    return (
-      <div className="loading-card" role="status">
-        <p>Refreshing latest posts...</p>
-        <div
-          className="crawl-progress"
-          role="progressbar"
-          aria-label="Refreshing latest posts progress"
-          aria-valuetext="Refreshing latest posts"
-        />
-      </div>
-    )
-  }
-
-  if (sources === undefined || posts === undefined) {
-    return (
-      <div className="loading-card" role="status">
-        <p>Loading digest...</p>
-        <span />
-        <span />
-        <span />
-      </div>
-    )
-  }
-
-  if (sources.length === 0) {
-    return (
-      <div className="empty-state">
-        <p className="empty-title">No sources saved yet.</p>
-        <p>Add the current page or use the right-click menu to build tomorrow's brief.</p>
-      </div>
-    )
-  }
-
-  const digest = selectDigest(posts, sources, today)
-  if (digest.length > 0) {
-    return (
-      <ul className="digest-list" aria-label="Today's digest">
-        {digest.map((post, index) => {
-          const source = sources.find((candidate) => candidate.id === post.sourceId)
-          return (
-            <li key={post.postUrl}>
-              <article className={index === 0 ? 'post-card featured-post' : 'post-card'}>
-                {post.thumbnail ? (
-                  <img src={post.thumbnail} alt={`${post.title} thumbnail`} width="72" height="72" />
-                ) : (
-                  <div className="thumbnail-fallback" aria-hidden="true">
-                    {sourceInitial(source, post)}
-                  </div>
-                )}
-                <div className="post-content">
-                  <div className="post-meta">
-                    <span>{source?.title ?? hostLabel(post.sourceUrl)}</span>
-                    <span>{relativeTime(post.publishedAt ?? post.crawledAt)}</span>
-                  </div>
-                  <h2>
-                    <a href={post.postUrl} target="_blank" rel="noreferrer">
-                      {post.title}
-                    </a>
-                  </h2>
-                  <p>{post.summary}</p>
-                </div>
-              </article>
-            </li>
-          )
-        })}
-      </ul>
-    )
-  }
-
-  const failures = sources.filter((source) => source.lastError)
-  if (failures.length === sources.length) {
-    return (
-      <div className="alert" role="alert">
-        <p>All sources failed to crawl.</p>
-        <ul>
-          {failures.map((source) => (
-            <li key={source.id ?? source.url}>
-              {source.title}: {source.lastError}
-            </li>
-          ))}
-        </ul>
-      </div>
-    )
-  }
-
-  return (
-    <div className="empty-state">
-      <p className="empty-title">No posts crawled for today yet.</p>
-      <p>Refresh the digest or wait for the next scheduled crawl.</p>
-    </div>
   )
 }
 
@@ -431,17 +353,6 @@ function localDateKey(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-function digestSummary(
-  sourceCount: number,
-  postCount: number,
-  crawlInProgress: boolean,
-): string | null {
-  if (crawlInProgress) return 'Refreshing your saved sources'
-  if (sourceCount === 0) return 'Save a developer blog to start your local brief'
-  if (postCount === 0) return `${sourceCount} saved ${pluralize('source', sourceCount)} ready`
-  return null
-}
-
 function latestCrawlTime(sources: Source[] | undefined): string {
   const latest = sources
     ?.map((source) => source.lastCrawledAt)
@@ -456,17 +367,6 @@ function latestCrawlTime(sources: Source[] | undefined): string {
   }).format(new Date(latest))
 }
 
-function relativeTime(timestamp: number): string {
-  const minutes = Math.max(1, Math.round((Date.now() - timestamp) / 60000))
-  if (minutes < 60) return `${minutes}m ago`
-
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-
-  const days = Math.round(hours / 24)
-  return `${days}d ago`
-}
-
 function formatToday(date: Date): string {
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
@@ -474,21 +374,9 @@ function formatToday(date: Date): string {
   }).format(date)
 }
 
-function hostLabel(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return 'Saved source'
-  }
-}
-
-function sourceInitial(source: Source | undefined, post?: Post): string {
-  const label = source?.title ?? (post ? hostLabel(post.sourceUrl) : 'S')
+function sourceInitial(source: Source | undefined): string {
+  const label = source?.title ?? 'S'
   return label.trim().slice(0, 1).toUpperCase() || 'S'
-}
-
-function pluralize(word: string, count: number): string {
-  return count === 1 ? word : `${word}s`
 }
 
 function requestOriginPermission(sourceUrl: string): Promise<boolean> {
@@ -521,19 +409,6 @@ function PlusIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 5v14" />
       <path d="M5 12h14" />
-    </svg>
-  )
-}
-
-function ListIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 6h13" />
-      <path d="M8 12h13" />
-      <path d="M8 18h13" />
-      <path d="M3 6h.01" />
-      <path d="M3 12h.01" />
-      <path d="M3 18h.01" />
     </svg>
   )
 }
