@@ -111,7 +111,7 @@ describe('crawlSource', () => {
     })
   })
 
-  it('replaces off-origin feed media before storing the post', async () => {
+  it('falls back to a same-origin post image when feed media is off-origin', async () => {
     installFetchMock({
       'https://blog.test/': `<!doctype html>
         <html><head>
@@ -126,6 +126,10 @@ describe('crawlSource', () => {
             <media:thumbnail url="https://cdn.test/image.jpg" />
           </item>
         </channel></rss>`,
+      'https://blog.test/post-with-cdn-media': `<!doctype html>
+        <html><head>
+          <meta property="og:image" content="/images/post-cover.jpg" />
+        </head><body><h1>Post with CDN media</h1></body></html>`,
     })
     const source = await addSourceRow('https://blog.test/')
 
@@ -138,7 +142,7 @@ describe('crawlSource', () => {
     await expect(db.posts.toArray()).resolves.toMatchObject([
       {
         title: 'Post with CDN media',
-        thumbnail: '/placeholder.svg',
+        thumbnail: 'https://blog.test/images/post-cover.jpg',
         postUrl: 'https://blog.test/post-with-cdn-media',
       },
     ])
@@ -423,6 +427,41 @@ describe('crawlSource', () => {
         summary: 'Feed summary without an image.',
         thumbnail: 'https://blog.example.com/covers/post-with-og-image.png',
         postUrl: 'https://blog.example.com/post-with-og-image',
+      },
+    ])
+  })
+
+  it('falls back to a same-origin content image when Open Graph media is off-origin', async () => {
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': `<?xml version="1.0"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>Feed post with mixed image origins</title>
+            <link>/post-with-mixed-images</link>
+            <description>Feed summary without an image.</description>
+          </item>
+        </channel></rss>`,
+      'https://blog.example.com/post-with-mixed-images': `<!doctype html>
+        <html><head>
+          <meta property="og:image" content="https://cdn.test/remote-cover.jpg" />
+        </head><body>
+          <img src="/images/local-cover.jpg" alt="Post cover" />
+        </body></html>`,
+    })
+    const source = await addSourceRow('https://blog.example.com/')
+
+    await expect(crawlSource(source)).resolves.toMatchObject({
+      ok: true,
+      postsWritten: 1,
+      newPostsWritten: 1,
+    })
+
+    await expect(db.posts.toArray()).resolves.toMatchObject([
+      {
+        title: 'Feed post with mixed image origins',
+        thumbnail: 'https://blog.example.com/images/local-cover.jpg',
+        postUrl: 'https://blog.example.com/post-with-mixed-images',
       },
     ])
   })

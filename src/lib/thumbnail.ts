@@ -4,27 +4,32 @@
 // (CON-004).
 
 import { parseMarkup } from './dom'
-import { PLACEHOLDER_THUMBNAIL } from './thumbnail-policy'
+import { PLACEHOLDER_THUMBNAIL, renderableThumbnail } from './thumbnail-policy'
 
 export { PLACEHOLDER_THUMBNAIL, renderableThumbnail } from './thumbnail-policy'
 
 /** First `<img>` src found in a fragment of content HTML, if any. */
 export function firstImageSrc(html: string | undefined): string | undefined {
-  if (!html) return undefined
+  return imageSources(html)[0]
+}
+
+function imageSources(html: string | undefined): string[] {
+  if (!html) return []
   const doc = parseMarkup(html, 'text/html')
+  const sources: string[] = []
   for (const img of Array.from(doc.querySelectorAll('img'))) {
     for (const attr of IMAGE_SRC_ATTRIBUTES) {
       const src = firstNonEmpty(img.getAttribute(attr) ?? undefined)
-      if (src !== undefined) return src
+      if (src !== undefined) sources.push(src)
     }
 
     const srcset = firstSrcsetCandidate(img.getAttribute('srcset') ?? undefined)
-    if (srcset !== undefined) return srcset
+    if (srcset !== undefined) sources.push(srcset)
 
     const dataSrcset = firstSrcsetCandidate(img.getAttribute('data-srcset') ?? undefined)
-    if (dataSrcset !== undefined) return dataSrcset
+    if (dataSrcset !== undefined) sources.push(dataSrcset)
   }
-  return undefined
+  return sources
 }
 
 export interface ThumbnailCandidates {
@@ -54,6 +59,24 @@ export function resolveThumbnail({
     PLACEHOLDER_THUMBNAIL
 
   return thumbnail === PLACEHOLDER_THUMBNAIL ? thumbnail : absoluteUrl(thumbnail, baseUrl)
+}
+
+/** Return the first candidate that can be loaded from the saved source origin. */
+export function resolveRenderableThumbnail(
+  { feedMedia, ogImage, contentHtml, baseUrl }: ThumbnailCandidates,
+  sourceUrl: string,
+): string {
+  const candidates = [feedMedia, ogImage, ...imageSources(contentHtml)]
+
+  for (const candidate of candidates) {
+    const value = firstNonEmpty(candidate)
+    if (value === undefined) continue
+
+    const thumbnail = renderableThumbnail(absoluteUrl(value, baseUrl), sourceUrl)
+    if (thumbnail !== PLACEHOLDER_THUMBNAIL) return thumbnail
+  }
+
+  return PLACEHOLDER_THUMBNAIL
 }
 
 function firstNonEmpty(value: string | undefined): string | undefined {

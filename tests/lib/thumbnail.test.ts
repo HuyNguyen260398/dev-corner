@@ -4,6 +4,7 @@ import {
   firstImageSrc,
   PLACEHOLDER_THUMBNAIL,
   renderableThumbnail,
+  resolveRenderableThumbnail,
 } from '../../src/lib/thumbnail'
 
 describe('firstImageSrc', () => {
@@ -95,5 +96,32 @@ describe('renderableThumbnail', () => {
     expect(renderableThumbnail(PLACEHOLDER_THUMBNAIL, 'https://blog.test')).toBe(
       PLACEHOLDER_THUMBNAIL,
     )
+  })
+})
+
+describe('resolveRenderableThumbnail', () => {
+  it('skips disallowed candidates and returns the next same-origin image', () => {
+    expect(
+      resolveRenderableThumbnail(
+        {
+          ogImage: 'https://cdn.test/remote-cover.jpg',
+          contentHtml: '<img src="/images/local-cover.jpg">',
+          baseUrl: 'https://blog.test/posts/example',
+        },
+        'https://blog.test',
+      ),
+    ).toBe('https://blog.test/images/local-cover.jpg')
+  })
+
+  it('returns the placeholder when every candidate is disallowed', () => {
+    expect(
+      resolveRenderableThumbnail(
+        {
+          feedMedia: 'https://cdn.test/feed-cover.jpg',
+          contentHtml: '<img src="http://blog.test/insecure.jpg">',
+        },
+        'https://blog.test',
+      ),
+    ).toBe(PLACEHOLDER_THUMBNAIL)
   })
 })
