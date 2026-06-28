@@ -1,6 +1,6 @@
 # Pre-Publication Performance and Compliance Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans. Execute this plan inline, one task at a time, with a commit and user checkpoint after every task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make dev-corner v0.1.0 measurably performant, resilient under Manifest V3 service-worker limits, and internally consistent with Chrome Web Store policy before executing the publication plan.
 
@@ -14,8 +14,29 @@
 
 - Design specification: `docs/superpowers/specs/2026-06-28-pre-publication-performance-compliance-design.md`
 - This plan must finish before `docs/superpowers/plans/2026-06-27-chrome-webstore-publication.md` starts.
-- Execute tasks in numeric order. A task may not be marked complete until its listed verification commands pass.
+- Execute tasks inline in numeric order. Do not dispatch implementation work to subagents.
+- A task may not be marked complete until its listed verification commands pass, its task-scoped commit exists, and its user checkpoint has been sent.
 - Use test-driven development for every behavior change: add the focused failing test, observe the expected failure, implement the smallest complete change, then run focused and full regression checks.
+
+## Mandatory Inline Execution Protocol
+
+Apply this protocol to Tasks 1–9 without exception:
+
+1. Use `superpowers:executing-plans` and work in the active session. Execute exactly one task at a time.
+2. Before editing, restate the active task and inspect `git status --short`. Do not include unrelated worktree changes.
+3. Complete every checkbox in the active task, including its focused and regression verification.
+4. Create exactly one task-scoped commit using the commit command specified by that task. Do not combine two tasks in one commit and do not split one task across multiple commits.
+5. Immediately after the commit, send Huy a completion checkpoint containing:
+   - task number and task name;
+   - commit SHA and subject;
+   - files changed;
+   - verification commands and pass/fail results;
+   - performance, security, permission, or policy impact;
+   - blockers or deviations, explicitly stating `None` when absent.
+6. Stop after sending the checkpoint. Wait for Huy's explicit approval before starting the next task.
+7. If verification fails or scope must change, do not commit. Report the evidence and wait for direction.
+
+For each checkpoint, obtain the committed identity and file list with `git show --stat --oneline --summary HEAD` and report the actual output under the fixed labels `Commit`, `Files`, `Verification`, `Impact`, and `Blockers/deviations`. End Tasks 1–8 by naming the next task number and stating that execution is waiting for Huy's approval. End Task 9 by requesting acceptance of the completed pre-publication gate.
 
 ## Global Constraints
 
@@ -196,6 +217,10 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   git commit -m "build: add pre-publication release gates"
   ```
 
+- [ ] **Step 7: Send the Task 1 completion checkpoint and stop**
+
+  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 1, “Add deterministic local and package release gates,” is complete. Report the commit, changed files, `pnpm verify:release` result, recorded package sizes, release-gate impact, and any blockers/deviations. State that execution is waiting for approval to start Task 2. Do not begin Task 2 in the same turn.
+
 ### Task 2: Align default settings and deletion with disclosed behavior
 
 **Files:**
@@ -354,6 +379,10 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   git commit -m "fix: align local data lifecycle with disclosures"
   ```
 
+- [ ] **Step 8: Send the Task 2 completion checkpoint and stop**
+
+  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 2, “Align default settings and deletion with disclosed behavior,” is complete. Report the commit, changed files, focused/full test results, notification-default and deletion/permission-cleanup impact, and any blockers/deviations. State that execution is waiting for approval to start Task 3. Do not begin Task 3 in the same turn.
+
 ### Task 3: Declare the minimum current-tab permission and explicit CSP
 
 **Files:**
@@ -429,6 +458,10 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   git add manifest.config.ts tests/manifest.test.ts
   git commit -m "fix: declare minimal current-tab access and CSP"
   ```
+
+- [ ] **Step 6: Send the Task 3 completion checkpoint and stop**
+
+  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 3, “Declare the minimum current-tab permission and explicit CSP,” is complete. Report the commit, changed files, manifest/build/package verification, permission/CSP impact, and any blockers/deviations. State that execution is waiting for approval to start Task 4. Do not begin Task 4 in the same turn.
 
 ### Task 4: Enforce the saved-origin thumbnail boundary
 
@@ -572,6 +605,10 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   git add src/lib/thumbnail.ts src/background/crawl.ts src/popup/PostCard.tsx src/popup/DailyPostsTab.tsx src/popup/FavoritePostsTab.tsx tests/lib/thumbnail.test.ts tests/popup/components.test.tsx tests/popup/App.test.tsx tests/integration/crawl.test.ts
   git commit -m "fix: restrict thumbnails to saved source origins"
   ```
+
+- [ ] **Step 8: Send the Task 4 completion checkpoint and stop**
+
+  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 4, “Enforce the saved-origin thumbnail boundary,” is complete. Report the commit, changed files, focused/full test results, remote-resource/privacy/performance impact, and any blockers/deviations. State that execution is waiting for approval to start Task 5. Do not begin Task 5 in the same turn.
 
 ### Task 5: Bound network bodies, redirects, requests, and source duration
 
@@ -752,6 +789,10 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   git commit -m "perf: bound crawler network work"
   ```
 
+- [ ] **Step 8: Send the Task 5 completion checkpoint and stop**
+
+  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 5, “Bound network bodies, redirects, requests, and source duration,” is complete. Report the commit, changed files, focused/typecheck/full test results, enforced network limits and redirect policy, and any blockers/deviations. State that execution is waiting for approval to start Task 6. Do not begin Task 6 in the same turn.
+
 ### Task 6: Reuse cached metadata and batch IndexedDB writes
 
 **Files:**
@@ -908,6 +949,10 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   git add src/lib/concurrency.ts tests/lib/concurrency.test.ts src/background/crawl.ts tests/integration/crawl.test.ts
   git commit -m "perf: reuse crawl metadata and batch writes"
   ```
+
+- [ ] **Step 9: Send the Task 6 completion checkpoint and stop**
+
+  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 6, “Reuse cached metadata and batch IndexedDB writes,” is complete. Report the commit, changed files, focused/typecheck/full test results, request-count/concurrency/database-write impact, and any blockers/deviations. State that execution is waiting for approval to start Task 7. Do not begin Task 7 in the same turn.
 
 ### Task 7: Add single-flight crawling and alarm-backed continuation
 
@@ -1067,6 +1112,10 @@ interface CrawlRunState {
   git commit -m "perf: resume bounded crawls with alarms"
   ```
 
+- [ ] **Step 10: Send the Task 7 completion checkpoint and stop**
+
+  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 7, “Add single-flight crawling and alarm-backed continuation,” is complete. Report the commit, changed files, orchestration/typecheck/full test results, MV3 recovery and notification impact, and any blockers/deviations. State that execution is waiting for approval to start Task 8. Do not begin Task 8 in the same turn.
+
 ### Task 8: Create the compliance evidence and accurate publication artifacts
 
 **Files:**
@@ -1086,7 +1135,7 @@ interface CrawlRunState {
   pnpm verify:package
   ```
 
-  Expected: no unresolved high/critical production advisories; package verification confirms no remote/dynamically evaluated code. A high/critical result blocks this plan and publication. Record the advisory identifiers, update only the affected production dependency to the smallest compatible patched version, run `pnpm verify:release`, commit the lockfile/package change as `fix: remediate production dependency advisories`, then repeat this step until the audit passes.
+  Expected: no unresolved high/critical production advisories; package verification confirms no remote/dynamically evaluated code. A high/critical result blocks Task 8 and publication. Do not modify dependencies or create a Task 8 commit. Report the advisory identifiers to Huy and wait for approval to add a separately scoped dependency-remediation task, preserving the one-commit-per-task rule.
 
 - [ ] **Step 2: Write the compliance matrix**
 
@@ -1308,6 +1357,10 @@ interface CrawlRunState {
   git commit -m "docs: add Chrome Web Store compliance evidence"
   ```
 
+- [ ] **Step 9: Send the Task 8 completion checkpoint and stop**
+
+  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 8, “Create the compliance evidence and accurate publication artifacts,” is complete. Report the commit, changed files, audit/package/document-consistency results, Chrome Web Store policy impact, and any blockers/deviations. State that execution is waiting for approval to start Task 9. Do not begin Task 9 in the same turn.
+
 ### Task 9: Execute and record the final pre-publication release gate
 
 **Files:**
@@ -1402,6 +1455,10 @@ interface CrawlRunState {
   git commit -m "docs: record pre-publication release gate"
   ```
 
+- [ ] **Step 8: Send the Task 9 completion checkpoint and stop**
+
+  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 9, “Execute and record the final pre-publication release gate,” is complete. Report the commit, release-report file, complete automated/manual verification evidence, measured budgets, ZIP checksum, and any blockers/deviations. Request Huy's acceptance of the completed pre-publication gate before beginning the separate Chrome Web Store publication plan.
+
 ## Final Completion Criteria
 
 The plan is complete only when all of the following are true:
@@ -1418,6 +1475,7 @@ The plan is complete only when all of the following are true:
 - Privacy policy, compliance matrix, dashboard guidance, listing copy, reviewer instructions, and runtime behavior agree.
 - The publication plan begins with a passing prerequisite for this plan.
 - The final ZIP checksum is recorded against the tested commit and version.
+- Tasks 1–9 were executed inline, each produced exactly one task-scoped commit, and Huy received and approved a completion checkpoint before the next task began.
 
 ## Self-Review
 
@@ -1436,6 +1494,7 @@ The plan is complete only when all of the following are true:
 | One notification after complete daily queue | Task 7 |
 | Data inventory and disclosure consistency | Task 8 |
 | Publication dependency and final evidence | Tasks 8 and 9 |
+| Inline execution, commit-per-task, and user checkpoints | Mandatory Inline Execution Protocol and final step of every task |
 
 ### Constraint review
 
