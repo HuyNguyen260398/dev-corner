@@ -14,7 +14,14 @@ beforeEach(async () => {
   responses = {
     GET_SETTINGS: { ok: true, settings: { enableDailyCron: true, enableDailyNotifications: false } },
     GET_CRAWL_STATUS: { ok: true, crawlInProgress: false },
-    CRAWL_ALL: { ok: true, sourcesCrawled: 0, postsWritten: 0, newPostsWritten: 0, failures: [] },
+    CRAWL_ALL: {
+      ok: true,
+      sourcesCrawled: 0,
+      postsWritten: 0,
+      newPostsWritten: 0,
+      failures: [],
+      crawlCompleted: true,
+    },
     UPDATE_SETTINGS: {
       ok: true,
       settings: { enableDailyCron: false, enableDailyNotifications: false },
@@ -119,6 +126,57 @@ describe('App scheduling controls', () => {
         false,
       )
     })
+  })
+
+  it('clears local refresh progress while continuation remains storage-backed', async () => {
+    let resolveCrawl!: (response: WorkerResponse) => void
+    const pendingCrawl = new Promise<WorkerResponse>((resolve) => {
+      resolveCrawl = resolve
+    })
+    const sendMessage = chrome.runtime.sendMessage as unknown as ReturnType<typeof vi.fn>
+    sendMessage.mockImplementation((request: WorkerRequest) =>
+      request.type === 'CRAWL_ALL'
+        ? pendingCrawl
+        : Promise.resolve(
+            responses[request.type] ?? { ok: false, error: `Unhandled ${request.type}` },
+          ),
+    )
+
+    const view = render(<App />)
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'GET_CRAWL_STATUS' })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh digest' }))
+    expect(await screen.findByText('Refreshing latest posts...')).toBeTruthy()
+
+    resolveCrawl({
+      ok: true,
+      sourcesCrawled: 1,
+      postsWritten: 5,
+      newPostsWritten: 5,
+      failures: [],
+      crawlCompleted: false,
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Refreshing latest posts...')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Refresh digest' })).toHaveProperty(
+        'disabled',
+        false,
+      )
+    })
+
+    view.unmount()
+    responses.GET_CRAWL_STATUS = { ok: true, crawlInProgress: true }
+    sendMessage.mockImplementation((request: WorkerRequest) =>
+      Promise.resolve(
+        responses[request.type] ?? { ok: false, error: `Unhandled ${request.type}` },
+      ),
+    )
+    render(<App />)
+
+    expect(await screen.findByText('Refreshing latest posts...')).toBeTruthy()
   })
 })
 

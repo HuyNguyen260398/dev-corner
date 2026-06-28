@@ -9,15 +9,19 @@ import {
   renderableThumbnail,
   resolveThumbnail,
 } from '../lib/thumbnail'
-import type { Post, Source } from '../lib/types'
+import type { CrawlRunState, Post, Source } from '../lib/types'
 import { fetchText, SOURCE_TIMEOUT_MS, type FetchTextResult } from './fetch'
 import { ensureSourcePermission } from './permissions'
 
 export const CRAWL_QUEUE_KEY = 'crawlQueue'
 export const CRAWL_IN_PROGRESS_KEY = 'crawlInProgress'
+export const CRAWL_RUN_KEY = 'crawlRun'
+export const CRAWL_CONTINUATION_ALARM = 'crawl-continuation'
+export const MAX_CRAWL_INVOCATION_MS = 4 * 60_000
 
 const MAX_POSTS_PER_SOURCE = 5
 const ENRICHMENT_CONCURRENCY = 3
+const CRAWL_CONTINUATION_DELAY_MS = 60_000
 const NON_POST_PATH_PREFIXES = ['/author', '/authors', '/category', '/page', '/tag', '/tags']
 
 export interface CrawlSourceResult {
@@ -30,10 +34,17 @@ export interface CrawlSourceResult {
 
 export interface CrawlAllResult {
   ok: true
+  completed: boolean
+  notificationRequested: boolean
   sourcesCrawled: number
   postsWritten: number
   newPostsWritten: number
   failures: Array<{ sourceId: number; error: string }>
+}
+
+export interface CrawlAllOptions {
+  notificationRequested?: boolean
+  now?: () => number
 }
 
 interface HtmlEntry {
@@ -49,6 +60,9 @@ interface PreparedEntries<T> {
 }
 
 type PostWithReusableMetadata = Post & { thumbnail: string }
+
+let activeCrawl: Promise<CrawlAllResult> | undefined
+let activeNotificationRequested = false
 
 /** Crawl one persisted source, upserting at most five newest posts. */
 export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
@@ -111,39 +125,72 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
   }
 }
 
-/** Crawl all saved sources, resuming an existing storage-backed queue if present. */
-export async function crawlAll(): Promise<CrawlAllResult> {
+/** Crawl all saved sources, sharing active work and resuming persisted queues. */
+export function crawlAll(options: CrawlAllOptions = {}): Promise<CrawlAllResult> {
+  activeNotificationRequested ||= options.notificationRequested ?? false
+  if (activeCrawl !== undefined) return activeCrawl
+
+  const promise = runCrawlAll(options).finally(() => {
+    activeCrawl = undefined
+    activeNotificationRequested = false
+  })
+  activeCrawl = promise
+  return promise
+}
+
+async function runCrawlAll(options: CrawlAllOptions): Promise<CrawlAllResult> {
+  const now = options.now ?? Date.now
+  const invocationStartedAt = now()
   await storageSet(CRAWL_IN_PROGRESS_KEY, true)
 
   try {
+    const storedRunState = await storageGet<CrawlRunState>(CRAWL_RUN_KEY)
     let queue = await storageGet<number[]>(CRAWL_QUEUE_KEY)
-    if (queue === undefined || queue.length === 0) {
+    if (storedRunState === undefined && (queue === undefined || queue.length === 0)) {
       const sources = await db.sources.toArray()
       queue = sources.flatMap((source) => (source.id == null ? [] : [source.id]))
-      if (queue.length > 0) {
-        await storageSet(CRAWL_QUEUE_KEY, queue)
-      } else {
-        await storageRemove(CRAWL_QUEUE_KEY)
-      }
     }
+    queue ??= []
 
-    let sourcesCrawled = 0
-    let postsWritten = 0
-    let newPostsWritten = 0
-    const failures: CrawlAllResult['failures'] = []
+    let runState: CrawlRunState = storedRunState ?? {
+      startedAt: invocationStartedAt,
+      notificationRequested: false,
+      sourcesCrawled: 0,
+      postsWritten: 0,
+      newPostsWritten: 0,
+      failures: [],
+    }
+    runState = mergeNotificationRequest(runState)
+    await storageSetItems({
+      [CRAWL_QUEUE_KEY]: queue,
+      [CRAWL_RUN_KEY]: runState,
+    })
 
+    let processedThisInvocation = 0
     while (queue.length > 0) {
+      if (
+        processedThisInvocation > 0 &&
+        now() - invocationStartedAt >= MAX_CRAWL_INVOCATION_MS
+      ) {
+        runState = mergeNotificationRequest(runState)
+        await storageSet(CRAWL_RUN_KEY, runState)
+        chrome.alarms.create(CRAWL_CONTINUATION_ALARM, {
+          when: now() + CRAWL_CONTINUATION_DELAY_MS,
+        })
+        return crawlAllResult(runState, false)
+      }
+
       const sourceId = queue[0]
       if (sourceId === undefined) break
 
       const source = await db.sources.get(sourceId)
       if (source !== undefined) {
         const result = await crawlSource(source)
-        sourcesCrawled += 1
-        postsWritten += result.postsWritten
-        newPostsWritten += result.newPostsWritten
+        runState.sourcesCrawled += 1
+        runState.postsWritten += result.postsWritten
+        runState.newPostsWritten += result.newPostsWritten
         if (!result.ok) {
-          failures.push({
+          runState.failures.push({
             sourceId,
             error: result.error ?? 'Crawl failed',
           })
@@ -151,18 +198,43 @@ export async function crawlAll(): Promise<CrawlAllResult> {
       }
 
       queue = queue.slice(1)
-      if (queue.length > 0) {
-        await storageSet(CRAWL_QUEUE_KEY, queue)
-      } else {
-        await storageRemove(CRAWL_QUEUE_KEY)
-      }
+      processedThisInvocation += 1
+      runState = mergeNotificationRequest(runState)
+      await storageSetItems({
+        [CRAWL_QUEUE_KEY]: queue,
+        [CRAWL_RUN_KEY]: runState,
+      })
     }
 
+    runState = mergeNotificationRequest(runState)
+    await storageSet(CRAWL_RUN_KEY, runState)
     await pruneOldPosts()
-
-    return { ok: true, sourcesCrawled, postsWritten, newPostsWritten, failures }
-  } finally {
     await storageSet(CRAWL_IN_PROGRESS_KEY, false)
+    await storageRemove(CRAWL_QUEUE_KEY)
+    await storageRemove(CRAWL_RUN_KEY)
+
+    return crawlAllResult(runState, true)
+  } catch (error) {
+    await storageSet(CRAWL_IN_PROGRESS_KEY, false)
+    throw error
+  }
+}
+
+function mergeNotificationRequest(runState: CrawlRunState): CrawlRunState {
+  return activeNotificationRequested && !runState.notificationRequested
+    ? { ...runState, notificationRequested: true }
+    : runState
+}
+
+function crawlAllResult(runState: CrawlRunState, completed: boolean): CrawlAllResult {
+  return {
+    ok: true,
+    completed,
+    notificationRequested: runState.notificationRequested,
+    sourcesCrawled: runState.sourcesCrawled,
+    postsWritten: runState.postsWritten,
+    newPostsWritten: runState.newPostsWritten,
+    failures: runState.failures,
   }
 }
 
@@ -516,6 +588,12 @@ function storageGet<T>(key: string): Promise<T | undefined> {
 function storageSet(key: string, value: unknown): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.set({ [key]: value }, resolve)
+  })
+}
+
+function storageSetItems(items: Record<string, unknown>): Promise<void> {
+  return new Promise((resolve) => {
+    chrome.storage.local.set(items, resolve)
   })
 }
 

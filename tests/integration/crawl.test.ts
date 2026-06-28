@@ -2,7 +2,14 @@ import 'fake-indexeddb/auto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { crawlAll, crawlSource, CRAWL_QUEUE_KEY } from '../../src/background/crawl'
+import {
+  crawlAll,
+  crawlSource,
+  CRAWL_CONTINUATION_ALARM,
+  CRAWL_QUEUE_KEY,
+  CRAWL_RUN_KEY,
+  MAX_CRAWL_INVOCATION_MS,
+} from '../../src/background/crawl'
 import { MAX_MARKUP_BYTES, SOURCE_TIMEOUT_MS } from '../../src/background/fetch'
 import { db } from '../../src/lib/db'
 import type { Source, WorkerRequest, WorkerResponse } from '../../src/lib/types'
@@ -647,6 +654,109 @@ describe('crawlSource', () => {
 })
 
 describe('crawlAll', () => {
+  it('shares one active crawl across concurrent callers', async () => {
+    const source = await addSourceRow('https://single-flight.test/')
+    await db.sources.update(source.id, { feedUrl: 'https://single-flight.test/feed.xml' })
+    let releaseFeed!: () => void
+    const feedGate = new Promise<void>((resolve) => {
+      releaseFeed = resolve
+    })
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input)
+      await feedGate
+      return httpResponse(rss.replaceAll('https://example.com/', 'https://single-flight.test/'), url)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const first = crawlAll()
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    const second = crawlAll()
+    const samePromise = first === second
+    const settledPromise = Promise.allSettled([first, second])
+    queueMicrotask(releaseFeed)
+    const settled = await settledPromise
+
+    expect(samePromise).toBe(true)
+    expect(settled[0]).toMatchObject({ status: 'fulfilled' })
+    expect(settled[1]).toMatchObject({ status: 'fulfilled' })
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input]) => String(input) === 'https://single-flight.test/feed.xml',
+      ),
+    ).toHaveLength(1)
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input]) => String(input) === 'https://single-flight.test/post-5',
+      ),
+    ).toHaveLength(1)
+  })
+
+  it('persists partial progress and resumes with cumulative totals', async () => {
+    const first = await addSourceRow('https://first.batch.test/')
+    const second = await addSourceRow('https://second.batch.test/')
+    await db.sources.update(first.id, { feedUrl: 'https://first.batch.test/feed.xml' })
+    await db.sources.update(second.id, { feedUrl: 'https://second.batch.test/feed.xml' })
+
+    const startedAt = new Date('2026-06-20T10:15:00+07:00').getTime()
+    let clock = startedAt
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input)
+      if (url === 'https://first.batch.test/feed.xml') {
+        clock = startedAt + MAX_CRAWL_INVOCATION_MS
+        return httpResponse(
+          rss.replaceAll('https://example.com/', 'https://first.batch.test/'),
+          url,
+        )
+      }
+      return httpResponse(
+        rss.replaceAll('https://example.com/', 'https://second.batch.test/'),
+        url,
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const now = () => clock
+
+    const partial = await crawlAll({ now })
+
+    expect(partial).toEqual({
+      ok: true,
+      completed: false,
+      notificationRequested: false,
+      sourcesCrawled: 1,
+      postsWritten: 5,
+      newPostsWritten: 5,
+      failures: [],
+    })
+    expect(storage.values[CRAWL_QUEUE_KEY]).toEqual([second.id])
+    expect(storage.values[CRAWL_RUN_KEY]).toEqual({
+      startedAt,
+      notificationRequested: false,
+      sourcesCrawled: 1,
+      postsWritten: 5,
+      newPostsWritten: 5,
+      failures: [],
+    })
+    expect(storage.values.crawlInProgress).toBe(true)
+    expect(chrome.alarms.create).toHaveBeenCalledWith(CRAWL_CONTINUATION_ALARM, {
+      when: clock + 60_000,
+    })
+
+    const completed = await crawlAll({ now })
+
+    expect(completed).toEqual({
+      ok: true,
+      completed: true,
+      notificationRequested: false,
+      sourcesCrawled: 2,
+      postsWritten: 10,
+      newPostsWritten: 10,
+      failures: [],
+    })
+    expect(storage.values[CRAWL_QUEUE_KEY]).toBeUndefined()
+    expect(storage.values[CRAWL_RUN_KEY]).toBeUndefined()
+    expect(storage.values.crawlInProgress).toBe(false)
+  })
+
   it('rebuilds a stale empty checkpoint so newly saved sources are crawled', async () => {
     installFetchMock({
       'https://blog.example.com/': pageWithFeed,
@@ -659,6 +769,8 @@ describe('crawlAll', () => {
 
     expect(result).toEqual({
       ok: true,
+      completed: true,
+      notificationRequested: false,
       sourcesCrawled: 1,
       postsWritten: 5,
       newPostsWritten: 5,
@@ -704,6 +816,8 @@ describe('crawlAll', () => {
 
     expect(result).toEqual({
       ok: true,
+      completed: true,
+      notificationRequested: false,
       sourcesCrawled: 1,
       postsWritten: 5,
       newPostsWritten: 5,
@@ -852,6 +966,7 @@ describe('worker crawl wiring', () => {
     await db.posts.clear()
     await expect(sendWorkerMessage(listener, { type: 'CRAWL_ALL' })).resolves.toEqual({
       ok: true,
+      crawlCompleted: true,
       sourcesCrawled: 1,
       postsWritten: 5,
       newPostsWritten: 5,
@@ -944,6 +1059,58 @@ describe('worker crawl wiring', () => {
     expect(chrome.alarms.create).toHaveBeenCalledWith('daily-0700-crawl', {
       when: new Date(2026, 5, 21, 7, 0, 0).getTime(),
     })
+  })
+
+  it('notifies once after a daily crawl completes across continuation batches', async () => {
+    storage.values.settings = { enableDailyCron: true, enableDailyNotifications: true }
+    const startedAt = new Date(2026, 5, 20, 7, 0, 0).getTime()
+    let clock = startedAt
+    vi.mocked(Date.now).mockImplementation(() => clock)
+    const first = await addSourceRow('https://first.daily.test/')
+    const second = await addSourceRow('https://second.daily.test/')
+    await db.sources.update(first.id, { feedUrl: 'https://first.daily.test/feed.xml' })
+    await db.sources.update(second.id, { feedUrl: 'https://second.daily.test/feed.xml' })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: URL | RequestInfo) => {
+        const url = String(input)
+        if (url === 'https://first.daily.test/feed.xml') {
+          clock = startedAt + MAX_CRAWL_INVOCATION_MS
+          return httpResponse(
+            rss.replaceAll('https://example.com/', 'https://first.daily.test/'),
+            url,
+          )
+        }
+        return httpResponse(
+          rss.replaceAll('https://example.com/', 'https://second.daily.test/'),
+          url,
+        )
+      }),
+    )
+    await import('../../src/background/index')
+    const alarmListener = expectAlarmListener()
+
+    alarmListener({ name: 'daily-0700-crawl', scheduledTime: startedAt })
+
+    await vi.waitFor(() => {
+      expect(chrome.alarms.create).toHaveBeenCalledWith(CRAWL_CONTINUATION_ALARM, {
+        when: startedAt + MAX_CRAWL_INVOCATION_MS + 60_000,
+      })
+      expect(chrome.alarms.create).toHaveBeenCalledWith('daily-0700-crawl', {
+        when: new Date(2026, 5, 21, 7, 0, 0).getTime(),
+      })
+    })
+    expect(storage.values.crawlInProgress).toBe(true)
+    expect(chrome.notifications.create).not.toHaveBeenCalled()
+
+    alarmListener({ name: CRAWL_CONTINUATION_ALARM, scheduledTime: clock + 60_000 })
+
+    await vi.waitFor(() => {
+      expect(chrome.notifications.create).toHaveBeenCalledTimes(1)
+      expect(storage.values.crawlInProgress).toBe(false)
+    })
+    expect(storage.values.lastDigestNotificationDate).toBe('2026-06-20')
+    expect(await db.posts.count()).toBe(10)
   })
 
   it('does not create a second daily notification on the same local day', async () => {
