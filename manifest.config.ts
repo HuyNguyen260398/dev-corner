@@ -14,11 +14,16 @@ export default defineManifest({
   manifest_version: 3,
   name: 'dev-corner',
   version: '0.1.0',
+  minimum_chrome_version: '103',
   description:
     'Crawls your saved blog sources and shows a daily 5-post reading digest. Fully local.',
   icons: extensionIcons,
-  permissions: ['storage', 'alarms', 'contextMenus', 'notifications'],
+  permissions: ['activeTab', 'storage', 'alarms', 'contextMenus', 'notifications'],
   optional_host_permissions: ['http://*/*', 'https://*/*'],
+  content_security_policy: {
+    extension_pages:
+      "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; connect-src https: http:; img-src 'self' data: https:",
+  },
   background: {
     service_worker: 'src/background/index.ts',
     type: 'module',
