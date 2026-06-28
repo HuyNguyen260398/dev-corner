@@ -89,8 +89,8 @@ describe('PostCard', () => {
     )
   })
 
-  it('replaces off-origin thumbnails without rendering the remote URL', () => {
-    const { container } = render(
+  it('loads an HTTPS thumbnail selected from a third-party host', () => {
+    render(
       <PostCard
         post={{
           postUrl: 'https://source.test/post',
@@ -107,7 +107,8 @@ describe('PostCard', () => {
       />,
     )
 
-    expect(container.querySelector('img')?.getAttribute('src')).toBe('/placeholder.svg')
-    expect(container.innerHTML).not.toContain('https://cdn.test/thumb.jpg')
+    expect(screen.getByRole('img', { name: 'Post title thumbnail' }).getAttribute('src')).toBe(
+      'https://cdn.test/thumb.jpg',
+    )
   })
 })

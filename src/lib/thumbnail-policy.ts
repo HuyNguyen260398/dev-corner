@@ -3,7 +3,6 @@ export const PLACEHOLDER_THUMBNAIL = '/placeholder.svg'
 
 export function renderableThumbnail(
   thumbnail: string | undefined,
-  sourceUrl: string,
 ): string {
   if (thumbnail === undefined || thumbnail === PLACEHOLDER_THUMBNAIL) {
     return PLACEHOLDER_THUMBNAIL
@@ -11,14 +10,7 @@ export function renderableThumbnail(
 
   try {
     const candidate = new URL(thumbnail)
-    const source = new URL(sourceUrl)
-    const belongsToSourceHost =
-      candidate.hostname === source.hostname ||
-      candidate.hostname.endsWith(`.${source.hostname}`)
-
-    return candidate.protocol === 'https:' && belongsToSourceHost
-      ? candidate.href
-      : PLACEHOLDER_THUMBNAIL
+    return candidate.protocol === 'https:' ? candidate.href : PLACEHOLDER_THUMBNAIL
   } catch {
     return PLACEHOLDER_THUMBNAIL
   }

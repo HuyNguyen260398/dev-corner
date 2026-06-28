@@ -48,7 +48,8 @@ Load the unpacked extension from `dist/` via chrome://extensions (Developer mode
 4. **Typed messages.** Use the discriminated unions in `src/lib/types.ts` for all
    cross-context messaging; extend them there rather than inlining shapes.
 5. **Idempotent crawling.** `postUrl` has a unique index; upsert to avoid dupes.
-6. **Privacy.** Only network calls are fetches to user-saved sources. No telemetry.
+6. **Privacy.** Page and feed fetches only target user-saved source origins.
+   Thumbnails may load from HTTPS URLs explicitly selected by those sources. No telemetry.
 7. **TypeScript strict.** No `any`; exhaustive `switch` on message/union types.
 
 ## Selection algorithm

@@ -27,7 +27,7 @@ export function PostCard({
   onToggleFavorite,
 }: PostCardProps) {
   const [imageFailed, setImageFailed] = useState(false)
-  const thumbnail = renderableThumbnail(post.thumbnail, post.sourceUrl)
+  const thumbnail = renderableThumbnail(post.thumbnail)
   const showImage = !imageFailed
 
   return (

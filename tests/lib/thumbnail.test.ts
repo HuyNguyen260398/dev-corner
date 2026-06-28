@@ -79,7 +79,7 @@ describe('resolveThumbnail fallback chain', () => {
 describe('renderableThumbnail', () => {
   it('allows HTTPS images from the saved source origin', () => {
     expect(
-      renderableThumbnail('https://blog.test/images/post.webp', 'https://blog.test/feed'),
+      renderableThumbnail('https://blog.test/images/post.webp'),
     ).toBe('https://blog.test/images/post.webp')
   })
 
@@ -87,30 +87,35 @@ describe('renderableThumbnail', () => {
     expect(
       renderableThumbnail(
         'https://media2.dev.to/dynamic/image/post.webp',
-        'https://dev.to/',
       ),
     ).toBe('https://media2.dev.to/dynamic/image/post.webp')
   })
 
+  it('allows HTTPS images from a third-party host selected by the source', () => {
+    expect(
+      renderableThumbnail(
+        'https://storage.ghost.io/content/images/post.webp',
+      ),
+    ).toBe('https://storage.ghost.io/content/images/post.webp')
+  })
+
   it.each([
-    'https://cdn.test/post.webp',
-    'https://evildev.to/post.webp',
     'http://blog.test/post.webp',
     'data:image/png;base64,AAAA',
     'javascript:alert(1)',
   ])('replaces disallowed thumbnail %s', (thumbnail) => {
-    expect(renderableThumbnail(thumbnail, 'https://blog.test')).toBe(PLACEHOLDER_THUMBNAIL)
+    expect(renderableThumbnail(thumbnail)).toBe(PLACEHOLDER_THUMBNAIL)
   })
 
   it('keeps the packaged placeholder', () => {
-    expect(renderableThumbnail(PLACEHOLDER_THUMBNAIL, 'https://blog.test')).toBe(
+    expect(renderableThumbnail(PLACEHOLDER_THUMBNAIL)).toBe(
       PLACEHOLDER_THUMBNAIL,
     )
   })
 })
 
 describe('resolveRenderableThumbnail', () => {
-  it('skips disallowed candidates and returns the next same-origin image', () => {
+  it('returns the first HTTPS candidate selected by the source', () => {
     expect(
       resolveRenderableThumbnail(
         {
@@ -118,19 +123,17 @@ describe('resolveRenderableThumbnail', () => {
           contentHtml: '<img src="/images/local-cover.jpg">',
           baseUrl: 'https://blog.test/posts/example',
         },
-        'https://blog.test',
       ),
-    ).toBe('https://blog.test/images/local-cover.jpg')
+    ).toBe('https://cdn.test/remote-cover.jpg')
   })
 
   it('returns the placeholder when every candidate is disallowed', () => {
     expect(
       resolveRenderableThumbnail(
         {
-          feedMedia: 'https://cdn.test/feed-cover.jpg',
+          feedMedia: 'http://cdn.test/feed-cover.jpg',
           contentHtml: '<img src="http://blog.test/insecure.jpg">',
         },
-        'https://blog.test',
       ),
     ).toBe(PLACEHOLDER_THUMBNAIL)
   })

@@ -1,7 +1,11 @@
 # Thumbnail Subdomain Policy Design
 
 **Date:** 2026-06-28  
-**Status:** Approved for implementation
+**Status:** Superseded
+
+This design was superseded on 2026-06-28 by the approved requirement to render
+valid HTTPS thumbnail URLs explicitly selected by a saved source, including
+third-party image hosts such as `storage.ghost.io`.
 
 ## Problem
 

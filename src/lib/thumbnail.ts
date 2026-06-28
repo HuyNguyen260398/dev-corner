@@ -61,10 +61,9 @@ export function resolveThumbnail({
   return thumbnail === PLACEHOLDER_THUMBNAIL ? thumbnail : absoluteUrl(thumbnail, baseUrl)
 }
 
-/** Return the first candidate from the saved source host or an HTTPS subdomain. */
+/** Return the first HTTPS candidate explicitly selected by the saved source. */
 export function resolveRenderableThumbnail(
   { feedMedia, ogImage, contentHtml, baseUrl }: ThumbnailCandidates,
-  sourceUrl: string,
 ): string {
   const candidates = [feedMedia, ogImage, ...imageSources(contentHtml)]
 
@@ -72,7 +71,7 @@ export function resolveRenderableThumbnail(
     const value = firstNonEmpty(candidate)
     if (value === undefined) continue
 
-    const thumbnail = renderableThumbnail(absoluteUrl(value, baseUrl), sourceUrl)
+    const thumbnail = renderableThumbnail(absoluteUrl(value, baseUrl))
     if (thumbnail !== PLACEHOLDER_THUMBNAIL) return thumbnail
   }
 

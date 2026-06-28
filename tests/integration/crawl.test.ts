@@ -99,7 +99,7 @@ describe('crawlSource', () => {
       sourceUrl: 'https://blog.example.com/',
       title: 'Post One',
       summary: 'First post body with HTML and an image.',
-      thumbnail: '/placeholder.svg',
+      thumbnail: 'https://example.com/thumb-1.jpg',
       postUrl: 'https://example.com/post-1',
       publishedAt: Date.parse('Fri, 20 Jun 2026 09:00:00 GMT'),
       crawledAt: Date.now(),
@@ -111,8 +111,8 @@ describe('crawlSource', () => {
     })
   })
 
-  it('falls back to a same-origin post image when feed media is off-origin', async () => {
-    installFetchMock({
+  it('stores HTTPS feed media selected from a third-party host', async () => {
+    const fetchMock = installFetchMock({
       'https://blog.test/': `<!doctype html>
         <html><head>
           <link rel="alternate" type="application/rss+xml" href="/feed.xml" />
@@ -142,10 +142,14 @@ describe('crawlSource', () => {
     await expect(db.posts.toArray()).resolves.toMatchObject([
       {
         title: 'Post with CDN media',
-        thumbnail: 'https://blog.test/images/post-cover.jpg',
+        thumbnail: 'https://cdn.test/image.jpg',
         postUrl: 'https://blog.test/post-with-cdn-media',
       },
     ])
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      'https://blog.test/post-with-cdn-media',
+      expect.anything(),
+    )
   })
 
   it('stores a DEV thumbnail served from a secure source subdomain', async () => {
@@ -401,12 +405,12 @@ describe('crawlSource', () => {
       'https://devopscube.com/create-helm-chart/': `<!doctype html>
         <html><head>
           <meta property="og:description" content="Learn how to create a Helm chart." />
-          <meta property="og:image" content="https://devopscube.com/helm-og.png" />
+          <meta property="og:image" content="https://storage.ghost.io/content/images/helm-og.png" />
         </head><body></body></html>`,
       'https://devopscube.com/slsa-provenance/': `<!doctype html>
         <html><head>
           <meta property="og:description" content="Learn SLSA provenance with GitHub Actions." />
-          <meta property="og:image" content="https://devopscube.com/slsa-og.png" />
+          <meta property="og:image" content="https://storage.ghost.io/content/images/slsa-og.png" />
         </head><body></body></html>`,
     })
     const source = await addSourceRow('https://devopscube.com/blog/')
@@ -417,12 +421,12 @@ describe('crawlSource', () => {
     await expect(db.posts.orderBy('postUrl').toArray()).resolves.toMatchObject([
       {
         title: 'Helm Chart Tutorial: A Simple Guide for Beginners',
-        thumbnail: 'https://devopscube.com/helm-og.png',
+        thumbnail: 'https://storage.ghost.io/content/images/helm-og.png',
         postUrl: 'https://devopscube.com/create-helm-chart/',
       },
       {
         title: 'SLSA Provenance Creation using GitHub Actions',
-        thumbnail: 'https://devopscube.com/slsa-og.png',
+        thumbnail: 'https://storage.ghost.io/content/images/slsa-og.png',
         postUrl: 'https://devopscube.com/slsa-provenance/',
       },
     ])
@@ -467,7 +471,7 @@ describe('crawlSource', () => {
     ])
   })
 
-  it('falls back to a same-origin content image when Open Graph media is off-origin', async () => {
+  it('prefers an HTTPS Open Graph image selected from a third-party host', async () => {
     installFetchMock({
       'https://blog.example.com/': pageWithFeed,
       'https://blog.example.com/feed.xml': `<?xml version="1.0"?>
@@ -496,7 +500,7 @@ describe('crawlSource', () => {
     await expect(db.posts.toArray()).resolves.toMatchObject([
       {
         title: 'Feed post with mixed image origins',
-        thumbnail: 'https://blog.example.com/images/local-cover.jpg',
+        thumbnail: 'https://cdn.test/remote-cover.jpg',
         postUrl: 'https://blog.example.com/post-with-mixed-images',
       },
     ])

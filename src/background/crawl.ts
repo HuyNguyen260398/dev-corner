@@ -94,7 +94,6 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
       feed === undefined
         ? await extractHtmlEntries(
             fetchedPage ?? (await fetchText(persistedSource.url, sourceSignal)),
-            persistedSource.url,
             sourceSignal,
           )
         : await enrichFeedEntries(parseFeed(feed.text), persistedSource.url, sourceSignal)
@@ -287,7 +286,6 @@ async function resolveFeed(
 
 async function extractHtmlEntries(
   fetchedPage: FetchTextResult,
-  sourceUrl: string,
   sourceSignal: AbortSignal,
 ): Promise<PreparedEntries<HtmlEntry>> {
   const doc = parseMarkup(fetchedPage.text, 'text/html')
@@ -306,7 +304,7 @@ async function extractHtmlEntries(
             summary: existing.summary,
             thumbnail: existing.thumbnail,
           }
-        : enrichHtmlEntry(candidate, sourceUrl, sourceSignal)
+        : enrichHtmlEntry(candidate, sourceSignal)
     },
   )
   return { entries: enrichedHtml, existingByUrl }
@@ -422,7 +420,7 @@ async function enrichFeedEntry(
   sourceUrl: string,
   sourceSignal: AbortSignal,
 ): Promise<FeedEntry> {
-  const feedThumbnail = renderableThumbnail(entry.thumbnail, sourceUrl)
+  const feedThumbnail = renderableThumbnail(entry.thumbnail)
   if (feedThumbnail !== PLACEHOLDER_THUMBNAIL) {
     return { ...entry, thumbnail: feedThumbnail }
   }
@@ -438,20 +436,16 @@ async function enrichFeedEntry(
   return {
     ...entry,
     postUrl,
-    thumbnail: resolveRenderableThumbnail(
-      {
-        ...(ogImage !== undefined ? { ogImage } : {}),
-        contentHtml: page.text,
-        baseUrl: page.url,
-      },
-      sourceUrl,
-    ),
+    thumbnail: resolveRenderableThumbnail({
+      ...(ogImage !== undefined ? { ogImage } : {}),
+      contentHtml: page.text,
+      baseUrl: page.url,
+    }),
   }
 }
 
 async function enrichHtmlEntry(
   candidate: { title: string; postUrl: string },
-  sourceUrl: string,
   sourceSignal: AbortSignal,
 ): Promise<HtmlEntry> {
   const page = await fetchMaybe(candidate.postUrl, sourceSignal)
@@ -470,14 +464,11 @@ async function enrichHtmlEntry(
   return {
     ...candidate,
     summary: summarize(summary),
-    thumbnail: resolveRenderableThumbnail(
-      {
-        ...(ogImage !== undefined ? { ogImage } : {}),
-        contentHtml: page.text,
-        baseUrl: page.url,
-      },
-      sourceUrl,
-    ),
+    thumbnail: resolveRenderableThumbnail({
+      ...(ogImage !== undefined ? { ogImage } : {}),
+      contentHtml: page.text,
+      baseUrl: page.url,
+    }),
   }
 }
 
@@ -497,7 +488,7 @@ function toPost({
     sourceUrl: source.url,
     title: entry.title,
     summary: entry.summary,
-    thumbnail: renderableThumbnail(entry.thumbnail, source.url),
+    thumbnail: renderableThumbnail(entry.thumbnail),
     postUrl: entry.postUrl,
     ...('publishedAt' in entry && entry.publishedAt !== undefined
       ? { publishedAt: entry.publishedAt }

@@ -20,7 +20,7 @@ Dev Corner builds a local daily reading digest from blog sources the user explic
 | Data | Trigger | Local storage | Network recipient | Retention/deletion |
 |---|---|---|---|---|
 | Source URL/title | Explicit subscribe | IndexedDB sources | Selected source origin | Removed on unsubscribe |
-| Post metadata | Crawl selected source | IndexedDB posts | Selected source origin; permitted thumbnail host/subdomain | Seven crawl days or unsubscribe |
+| Post metadata | Crawl selected source | IndexedDB posts | Selected source origin; source-selected HTTPS thumbnail host | Seven crawl days or unsubscribe |
 | Favorite snapshot | Explicit favorite action | IndexedDB favoritePosts | None | Explicit unfavorite or uninstall |
 | Settings | Toggle action/defaults | chrome.storage.local | None | Setting update or uninstall |
 | Crawl state/errors | Crawl execution | chrome.storage.local/IndexedDB | None | Completion, retry, source removal, or uninstall |
@@ -30,6 +30,7 @@ Dev Corner builds a local daily reading digest from blog sources the user explic
 - Single purpose: use the statement above.
 - Remote code: No. Remote markup and images are data and are never executed.
 - Website content: disclose because titles, summaries, links, and permitted thumbnail URLs are extracted.
+- Source-selected HTTPS thumbnail hosts receive ordinary image-request metadata; they may be third-party CDNs.
 - Web history: disclose conservatively because the extension stores URLs the user explicitly saves; it does not monitor general browsing history.
 - Personally identifiable, health, financial, authentication, personal communications, location, and general user-activity monitoring: not collected.
 - Data is not sold, used for ads, transferred to the developer, used for creditworthiness, or read by humans.

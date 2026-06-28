@@ -16,7 +16,7 @@ Subscribe from the popup or context menu. Dev Corner requests access only to tha
 
 An optional 07:00 local crawl keeps the digest current. Daily desktop notifications are off by default and can be enabled from Sources.
 
-Dev Corner has no account, backend, analytics, advertising, or telemetry. Content requests go only to source origins you save and grant; permitted thumbnails may load from that saved host or its HTTPS subdomains.
+Dev Corner has no account, backend, analytics, advertising, or telemetry. Content requests go only to source origins you save and grant; HTTPS thumbnails may load from image hosts explicitly selected by those sources.
 
 ## Permission justifications
 
@@ -25,7 +25,7 @@ Dev Corner has no account, backend, analytics, advertising, or telemetry. Conten
 - alarms: Schedules the optional daily crawl and resumes a bounded crawl queue without persistent worker timers.
 - contextMenus: Adds “Save to Dev Corner” for an explicitly selected page or link.
 - notifications: Sends an optional completed-digest alert. Notifications are off by default.
-- optional host permissions: Fetches RSS, Atom, and HTML only from origins the user explicitly subscribes to and grants. Thumbnail rendering is separately restricted to the saved host and its HTTPS subdomains.
+- optional host permissions: Fetches RSS, Atom, and HTML only from origins the user explicitly subscribes to and grants. Thumbnail rendering separately accepts HTTPS image URLs explicitly provided by those sources, including third-party CDNs.
 
 ## Dashboard data disclosure
 
