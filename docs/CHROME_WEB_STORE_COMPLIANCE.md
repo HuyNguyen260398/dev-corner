@@ -20,7 +20,7 @@ Dev Corner builds a local daily reading digest from blog sources the user explic
 | Data | Trigger | Local storage | Network recipient | Retention/deletion |
 |---|---|---|---|---|
 | Source URL/title | Explicit subscribe | IndexedDB sources | Selected source origin | Removed on unsubscribe |
-| Post metadata | Crawl selected source | IndexedDB posts | Selected source origin only | Seven crawl days or unsubscribe |
+| Post metadata | Crawl selected source | IndexedDB posts | Selected source origin; permitted thumbnail host/subdomain | Seven crawl days or unsubscribe |
 | Favorite snapshot | Explicit favorite action | IndexedDB favoritePosts | None | Explicit unfavorite or uninstall |
 | Settings | Toggle action/defaults | chrome.storage.local | None | Setting update or uninstall |
 | Crawl state/errors | Crawl execution | chrome.storage.local/IndexedDB | None | Completion, retry, source removal, or uninstall |
@@ -38,4 +38,3 @@ Dev Corner builds a local daily reading digest from blog sources the user explic
 ## Package evidence
 
 `pnpm verify:release` checks Manifest V3, no required host permissions, package/chunk budgets, and absence of eval, new Function, remote script tags, and remote source maps. The submission report records the final ZIP checksum.
-

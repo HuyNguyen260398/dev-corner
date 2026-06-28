@@ -61,7 +61,7 @@ export function resolveThumbnail({
   return thumbnail === PLACEHOLDER_THUMBNAIL ? thumbnail : absoluteUrl(thumbnail, baseUrl)
 }
 
-/** Return the first candidate that can be loaded from the saved source origin. */
+/** Return the first candidate from the saved source host or an HTTPS subdomain. */
 export function resolveRenderableThumbnail(
   { feedMedia, ogImage, contentHtml, baseUrl }: ThumbnailCandidates,
   sourceUrl: string,

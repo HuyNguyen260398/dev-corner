@@ -12,7 +12,11 @@ export function renderableThumbnail(
   try {
     const candidate = new URL(thumbnail)
     const source = new URL(sourceUrl)
-    return candidate.protocol === 'https:' && candidate.origin === source.origin
+    const belongsToSourceHost =
+      candidate.hostname === source.hostname ||
+      candidate.hostname.endsWith(`.${source.hostname}`)
+
+    return candidate.protocol === 'https:' && belongsToSourceHost
       ? candidate.href
       : PLACEHOLDER_THUMBNAIL
   } catch {

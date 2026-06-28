@@ -83,8 +83,18 @@ describe('renderableThumbnail', () => {
     ).toBe('https://blog.test/images/post.webp')
   })
 
+  it('allows HTTPS images from a descendant of the saved source host', () => {
+    expect(
+      renderableThumbnail(
+        'https://media2.dev.to/dynamic/image/post.webp',
+        'https://dev.to/',
+      ),
+    ).toBe('https://media2.dev.to/dynamic/image/post.webp')
+  })
+
   it.each([
     'https://cdn.test/post.webp',
+    'https://evildev.to/post.webp',
     'http://blog.test/post.webp',
     'data:image/png;base64,AAAA',
     'javascript:alert(1)',

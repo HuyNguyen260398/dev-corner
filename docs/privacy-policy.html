@@ -29,8 +29,8 @@
     <p>This information is stored in extension IndexedDB and <code>chrome.storage.local</code>. It is not transmitted to the developer or a developer-controlled service.</p>
 
     <h2>Network requests</h2>
-    <p>Dev Corner makes direct requests only to source origins you explicitly save and grant through Chrome's per-origin permission prompt. These requests discover and read RSS, Atom, or HTML content and may load an HTTPS thumbnail from the same saved origin. Thumbnail URLs on unrelated origins are not requested by the extension.</p>
-    <p>The selected source operator receives ordinary network information, such as your IP address, user agent, requested URL, and request time. Dev Corner does not add an account identifier or tracking identifier.</p>
+    <p>Dev Corner requests RSS, Atom, and HTML content only from source origins you explicitly save and grant through Chrome's per-origin permission prompt. It may also load an HTTPS thumbnail from the saved source host or one of that host's subdomains. Thumbnail URLs on sibling or unrelated domains are not requested by the extension.</p>
+    <p>The selected source operator or its thumbnail subdomain receives ordinary network information, such as your IP address, user agent, requested URL, and request time. Dev Corner does not add an account identifier or tracking identifier.</p>
     <p>If you explicitly save and grant an HTTP-only source, that connection is not encrypted. Dev Corner never downgrades an HTTPS source to HTTP.</p>
 
     <h2>Permissions</h2>
@@ -54,4 +54,3 @@
     <p>Questions may be sent to <a href="mailto:huynguyen260398@gmail.com">huynguyen260398@gmail.com</a>.</p>
   </body>
 </html>
-

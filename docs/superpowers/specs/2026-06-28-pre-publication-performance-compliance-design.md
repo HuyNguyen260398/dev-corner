@@ -130,11 +130,11 @@ Fetched markup is treated as untrusted data. It is parsed without `innerHTML`, `
 A thumbnail is renderable only when it is:
 
 - a packaged extension asset; or
-- an HTTPS URL with the same origin as the saved source.
+- an HTTPS URL on the saved source hostname or a descendant subdomain.
 
-Feed media, Open Graph images, and content images on a different origin are normalized to `undefined`; the popup renders the packaged fallback and never requests the remote URL. Existing persisted off-origin thumbnail URLs are rejected by the same render-time policy, so no data migration is required. The hard-coded AWS image fallback is removed. Post cards use `loading="lazy"`, `decoding="async"`, fixed dimensions, and a local visual fallback when an allowed image fails.
+Feed media, Open Graph images, and content images on a sibling or unrelated hostname are normalized to `undefined`; the popup renders the packaged fallback and never requests the remote URL. Existing persisted disallowed thumbnail URLs are rejected by the same render-time policy, so no data migration is required. The hard-coded AWS image fallback is removed. Post cards use `loading="lazy"`, `decoding="async"`, fixed dimensions, and a local visual fallback when an allowed image fails. The descendant-subdomain refinement is specified in `2026-06-28-thumbnail-subdomain-policy-design.md`.
 
-This boundary keeps popup requests within the origin deliberately saved by the user, prevents unrelated CDN contacts, avoids mixed-content thumbnail loads, and makes the privacy statement testable. It does not interpret image or markup bytes as executable logic.
+This boundary keeps popup requests within the host deliberately saved by the user and its controlled subdomains, prevents sibling or unrelated CDN contacts, avoids mixed-content thumbnail loads, and makes the privacy statement testable. It does not interpret image or markup bytes as executable logic.
 
 ## Manifest and Permission Design
 

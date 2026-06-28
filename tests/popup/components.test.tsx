@@ -66,6 +66,29 @@ describe('PostCard', () => {
     expect(image.getAttribute('decoding')).toBe('async')
   })
 
+  it('loads a thumbnail from a secure subdomain of the saved source host', () => {
+    render(
+      <PostCard
+        post={{
+          postUrl: 'https://dev.to/author/post',
+          title: 'DEV post',
+          summary: 'Summary',
+          thumbnail: 'https://media2.dev.to/dynamic/image/post.webp',
+          sourceUrl: 'https://dev.to/',
+          sourceTitle: 'DEV Community',
+          timestamp: 1,
+        }}
+        favorite={false}
+        pending={false}
+        onToggleFavorite={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('img', { name: 'DEV post thumbnail' }).getAttribute('src')).toBe(
+      'https://media2.dev.to/dynamic/image/post.webp',
+    )
+  })
+
   it('replaces off-origin thumbnails without rendering the remote URL', () => {
     const { container } = render(
       <PostCard

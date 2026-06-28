@@ -148,6 +148,42 @@ describe('crawlSource', () => {
     ])
   })
 
+  it('stores a DEV thumbnail served from a secure source subdomain', async () => {
+    installFetchMock({
+      'https://dev.to/': `<!doctype html>
+        <html><head>
+          <link rel="alternate" type="application/rss+xml" href="/feed" />
+        </head><body></body></html>`,
+      'https://dev.to/feed': `<?xml version="1.0"?>
+        <rss version="2.0"><channel>
+          <item>
+            <title>DEV post</title>
+            <link>https://dev.to/author/post</link>
+            <description>DEV post summary.</description>
+          </item>
+        </channel></rss>`,
+      'https://dev.to/author/post': `<!doctype html>
+        <html><head>
+          <meta property="og:image" content="https://media2.dev.to/dynamic/image/post.webp" />
+        </head><body><h1>DEV post</h1></body></html>`,
+    })
+    const source = await addSourceRow('https://dev.to/')
+
+    await expect(crawlSource(source)).resolves.toMatchObject({
+      ok: true,
+      postsWritten: 1,
+      newPostsWritten: 1,
+    })
+
+    await expect(db.posts.toArray()).resolves.toMatchObject([
+      {
+        title: 'DEV post',
+        thumbnail: 'https://media2.dev.to/dynamic/image/post.webp',
+        postUrl: 'https://dev.to/author/post',
+      },
+    ])
+  })
+
   it('crawls in a service-worker-like runtime without global DOMParser', async () => {
     vi.stubGlobal('DOMParser', undefined)
     installFetchMock({
