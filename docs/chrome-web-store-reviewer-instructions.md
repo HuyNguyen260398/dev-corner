@@ -11,5 +11,4 @@ No credentials or test account are required. Dev Corner is fully client-side.
 7. Return to Sources and unsubscribe. Normal posts for that source disappear; the independent favorite remains.
 8. Confirm Daily notifications is disabled on a fresh install and can be enabled explicitly in Sources.
 
-Network access is limited to origins explicitly saved and granted by the reviewer. No remote code, backend, analytics, or telemetry is used.
-
+RSS, Atom, and HTML requests are limited to origins explicitly saved and granted by the reviewer. Source-selected HTTPS thumbnails may load from third-party image hosts. No remote code, backend, analytics, or telemetry is used.

@@ -19,6 +19,7 @@
 - Dashboard disclosures must include Website content and, conservatively, Web history for explicitly saved URLs.
 - Permission justifications must cover `activeTab`, `storage`, `alarms`, `contextMenus`, `notifications`, and optional host permissions.
 - The notification-default claim must be verified by the Task 2 integration and popup tests; it is not an assumption.
+- Source-selected HTTPS thumbnails may load from third-party image hosts; disclosures must identify that network recipient and ordinary request metadata.
 - Privacy policy, dashboard answers, listing copy, reviewer instructions, manifest, and submitted ZIP must describe the same behavior.
 
 ---
@@ -41,7 +42,7 @@ No later publication task is authorized until all four checks pass.
 **Consumes:** `docs/privacy-policy.html`, `docs/CHROME_WEB_STORE_COMPLIANCE.md`
 
 - [ ] Compare the privacy policy against the compliance matrix and current package behavior.
-- [ ] Confirm it discloses local source/post/favorite/settings/crawl data, direct requests to saved origins, HTTP risk, retention/deletion, and Limited Use.
+- [ ] Confirm it discloses local source/post/favorite/settings/crawl data, direct content requests to saved origins, source-selected third-party HTTPS thumbnail hosts, HTTP risk, retention/deletion, and Limited Use.
 - [ ] Enable GitHub Pages from the repository `main` branch and `/docs` folder if it is not already enabled.
 - [ ] Open `https://huyng260398.github.io/dev-corner/privacy-policy.html` in a private window.
 - [ ] Confirm the page is public, current, readable, and matches the committed file.
@@ -55,7 +56,7 @@ Do not edit policy substance during deployment. Any inconsistency returns to the
 **Consumes:** `docs/store-listing.md`, `docs/chrome-web-store-reviewer-instructions.md`
 
 - [ ] Confirm the listing states the single purpose and says “up to five available posts.”
-- [ ] Confirm it discloses local storage, direct requests to saved/granted origins, conservative Website content and Web history mapping, and no remote code.
+- [ ] Confirm it discloses local storage, content requests to saved/granted origins, source-selected third-party HTTPS thumbnail hosts, conservative Website content and Web history mapping, and no remote code.
 - [ ] Confirm the short description is no more than 132 characters.
 - [ ] Confirm every manifest permission has a matching justification, including `activeTab`.
 - [ ] Confirm reviewer steps need no credentials and exercise subscribe, grant, refresh, favorite, unsubscribe, and notification-default behavior.
@@ -124,7 +125,7 @@ Do not edit policy substance during deployment. Any inconsistency returns to the
 - [ ] Declare Website content because the extension extracts post titles, summaries, links, timestamps, and permitted thumbnails.
 - [ ] Declare Web history conservatively because explicitly saved source URLs are stored; state that general browsing is not monitored.
 - [ ] Do not select personally identifiable, health, financial, authentication, personal communications, location, or general user-activity categories because the package does not handle them.
-- [ ] Certify that data is used only for the stated single purpose, remains local except for direct requests to selected source operators, is not sold or used for advertising or creditworthiness, and is not read by humans.
+- [ ] Certify that data is used only for the stated single purpose, remains local except for direct requests to selected source operators and source-selected HTTPS thumbnail hosts, is not sold or used for advertising or creditworthiness, and is not read by humans.
 - [ ] Certify Limited Use.
 - [ ] Select “No” for remote code; remote markup and images are data and all executable logic is packaged.
 
@@ -135,7 +136,7 @@ Do not edit policy substance during deployment. Any inconsistency returns to the
 - [ ] `alarms`: schedules the optional daily crawl and one-shot continuation without worker timers.
 - [ ] `contextMenus`: saves a page or link explicitly selected by the user.
 - [ ] `notifications`: sends an optional completed-digest alert; Task 2 tests verify it is off by default.
-- [ ] Optional host permissions: fetch RSS, Atom, HTML, and permitted same-origin thumbnails only for origins explicitly saved and granted by the user.
+- [ ] Optional host permissions: fetch RSS, Atom, and HTML only for origins explicitly saved and granted by the user. Thumbnail rendering separately accepts HTTPS image URLs explicitly provided by those sources, including third-party CDNs.
 
 - [ ] Set visibility to Public and choose the intended regions.
 - [ ] Save the draft and compare the listing preview against every committed artifact.
