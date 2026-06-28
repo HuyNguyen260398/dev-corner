@@ -44,6 +44,10 @@ const fixture = (name: string) =>
 const pageWithFeed = fixture('page-with-feed-link.html')
 const rss = fixture('rss-2.0.xml')
 const pageWithoutFeed = fixture('page-no-feed.html')
+const declaredFeedPage = `<!doctype html>
+  <html><head>
+    <link rel="alternate" type="application/rss+xml" href="/feed.xml" />
+  </head><body></body></html>`
 
 let storage: MockStorageArea
 let messageListeners: MessageListener[]
@@ -155,6 +159,9 @@ describe('crawlSource', () => {
     const source = await addSourceRow('https://blog.example.com/')
 
     const firstResult = await crawlSource(source)
+    const firstIds = new Map(
+      (await db.posts.toArray()).map((post) => [post.postUrl, post.id]),
+    )
     const secondResult = await crawlSource({ ...source, feedUrl: 'https://blog.example.com/feed.xml' })
 
     expect(firstResult).toEqual({
@@ -170,6 +177,98 @@ describe('crawlSource', () => {
       newPostsWritten: 0,
     })
     expect(await db.posts.count()).toBe(5)
+    for (const post of await db.posts.toArray()) {
+      expect(post.id).toBe(firstIds.get(post.postUrl))
+    }
+  })
+
+  it('reuses complete metadata without repeating post-page requests', async () => {
+    const responses: FetchMap = {
+      'https://cache.test/': declaredFeedPage,
+      'https://cache.test/feed.xml': noMediaFeed('https://cache.test'),
+    }
+    for (let index = 1; index <= 5; index += 1) {
+      responses[`https://cache.test/post-${index}`] = metadataPage(index)
+    }
+    const fetchMock = installFetchMock(responses)
+    const source = await addSourceRow('https://cache.test/')
+
+    await expect(crawlSource(source)).resolves.toMatchObject({
+      ok: true,
+      newPostsWritten: 5,
+    })
+    fetchMock.mockClear()
+
+    await expect(
+      crawlSource({ ...source, feedUrl: 'https://cache.test/feed.xml' }),
+    ).resolves.toMatchObject({
+      ok: true,
+      postsWritten: 5,
+      newPostsWritten: 0,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://cache.test/feed.xml',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+    for (let index = 1; index <= 5; index += 1) {
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        `https://cache.test/post-${index}`,
+        expect.anything(),
+      )
+    }
+  })
+
+  it('limits post-page enrichment to three active requests', async () => {
+    let activePostRequests = 0
+    let maximumActivePostRequests = 0
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input)
+      if (url === 'https://concurrency.test/') {
+        return httpResponse(declaredFeedPage, url)
+      }
+      if (url === 'https://concurrency.test/feed.xml') {
+        return httpResponse(noMediaFeed('https://concurrency.test'), url)
+      }
+
+      activePostRequests += 1
+      maximumActivePostRequests = Math.max(maximumActivePostRequests, activePostRequests)
+      await new Promise<void>((resolve) =>
+        queueMicrotask(() => {
+          activePostRequests -= 1
+          resolve()
+        }),
+      )
+      const index = Number(url.split('-').at(-1))
+      return httpResponse(metadataPage(index), url)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const source = await addSourceRow('https://concurrency.test/')
+
+    await expect(crawlSource(source)).resolves.toMatchObject({
+      ok: true,
+      postsWritten: 5,
+      newPostsWritten: 5,
+    })
+    expect(maximumActivePostRequests).toBe(3)
+  })
+
+  it('writes a source crawl with one bulk operation', async () => {
+    installFetchMock({
+      'https://blog.example.com/': pageWithFeed,
+      'https://blog.example.com/feed.xml': rss,
+    })
+    const bulkPutSpy = vi.spyOn(db.posts, 'bulkPut')
+    const putSpy = vi.spyOn(db.posts, 'put')
+    const source = await addSourceRow('https://blog.example.com/')
+
+    await expect(crawlSource(source)).resolves.toMatchObject({
+      ok: true,
+      postsWritten: 5,
+      newPostsWritten: 5,
+    })
+    expect(bulkPutSpy).toHaveBeenCalledOnce()
+    expect(putSpy).not.toHaveBeenCalled()
   })
 
   it('falls back to HTML links and Open Graph metadata when no feed is available', async () => {
@@ -997,6 +1096,25 @@ function oldPost(crawlDay: string, id: number) {
     crawledAt: Date.parse(`${crawlDay}T09:00:00Z`),
     crawlDay,
   }
+}
+
+function noMediaFeed(origin: string): string {
+  const items = Array.from({ length: 5 }, (_value, index) => {
+    const number = index + 1
+    return `<item>
+      <title>Post ${number}</title>
+      <link>${origin}/post-${number}</link>
+      <description>Summary ${number}</description>
+      <pubDate>${20 - index} Jun 2026 09:00:00 GMT</pubDate>
+    </item>`
+  }).join('')
+  return `<?xml version="1.0"?><rss version="2.0"><channel>${items}</channel></rss>`
+}
+
+function metadataPage(index: number): string {
+  return `<!doctype html><html><head>
+    <meta property="og:image" content="/images/post-${index}.jpg" />
+  </head><body></body></html>`
 }
 
 function installFetchMock(responses: FetchMap): ReturnType<typeof vi.fn> {

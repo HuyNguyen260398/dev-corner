@@ -1,4 +1,5 @@
 import { db } from '../lib/db'
+import { mapWithConcurrency } from '../lib/concurrency'
 import { parseMarkup } from '../lib/dom'
 import { discoverFeedUrl, feedProbeUrls, parseFeed, type FeedEntry } from '../lib/feed'
 import { pruneOldPosts } from '../lib/prune'
@@ -16,6 +17,7 @@ export const CRAWL_QUEUE_KEY = 'crawlQueue'
 export const CRAWL_IN_PROGRESS_KEY = 'crawlInProgress'
 
 const MAX_POSTS_PER_SOURCE = 5
+const ENRICHMENT_CONCURRENCY = 3
 const NON_POST_PATH_PREFIXES = ['/author', '/authors', '/category', '/page', '/tag', '/tags']
 
 export interface CrawlSourceResult {
@@ -40,6 +42,13 @@ interface HtmlEntry {
   summary: string
   thumbnail: string
 }
+
+interface PreparedEntries<T> {
+  entries: T[]
+  existingByUrl: Map<string, Post>
+}
+
+type PostWithReusableMetadata = Post & { thumbnail: string }
 
 /** Crawl one persisted source, upserting at most five newest posts. */
 export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
@@ -66,7 +75,7 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
       ? undefined
       : await fetchText(persistedSource.url, sourceSignal)
     const feed = await resolveFeed(persistedSource, fetchedPage, cachedFeedUrl, sourceSignal)
-    const entries =
+    const prepared =
       feed === undefined
         ? await extractHtmlEntries(
             fetchedPage ?? (await fetchText(persistedSource.url, sourceSignal)),
@@ -76,7 +85,7 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
 
     const now = Date.now()
     const crawlDay = localDateKey(new Date(now))
-    const posts = entries.slice(0, MAX_POSTS_PER_SOURCE).map((entry) =>
+    const posts = prepared.entries.slice(0, MAX_POSTS_PER_SOURCE).map((entry) =>
       toPost({
         entry,
         source: persistedSource,
@@ -85,12 +94,7 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
       }),
     )
 
-    let newPostsWritten = 0
-    for (const post of posts) {
-      if (await upsertPost(post)) {
-        newPostsWritten += 1
-      }
-    }
+    const newPostsWritten = await upsertPosts(posts, prepared.existingByUrl)
 
     await markSourceSuccess(persistedSource.id, now, feed?.url)
     return { ok: true, sourceId: persistedSource.id, postsWritten: posts.length, newPostsWritten }
@@ -210,15 +214,27 @@ async function resolveFeed(
 async function extractHtmlEntries(
   fetchedPage: FetchTextResult,
   sourceSignal: AbortSignal,
-): Promise<HtmlEntry[]> {
+): Promise<PreparedEntries<HtmlEntry>> {
   const doc = parseMarkup(fetchedPage.text, 'text/html')
-  const candidates = htmlPostCandidates(doc, fetchedPage.url).slice(0, MAX_POSTS_PER_SOURCE)
-
-  const entries: HtmlEntry[] = []
-  for (const candidate of candidates) {
-    entries.push(await enrichHtmlEntry(candidate, sourceSignal))
-  }
-  return entries
+  const htmlCandidates = htmlPostCandidates(doc, fetchedPage.url).slice(0, MAX_POSTS_PER_SOURCE)
+  const existingByUrl = await existingPostsByUrl(
+    htmlCandidates.map((candidate) => candidate.postUrl),
+  )
+  const enrichedHtml = await mapWithConcurrency(
+    htmlCandidates,
+    ENRICHMENT_CONCURRENCY,
+    async (candidate) => {
+      const existing = existingByUrl.get(candidate.postUrl)
+      return hasReusableMetadata(existing)
+        ? {
+            ...candidate,
+            summary: existing.summary,
+            thumbnail: existing.thumbnail,
+          }
+        : enrichHtmlEntry(candidate, sourceSignal)
+    },
+  )
+  return { entries: enrichedHtml, existingByUrl }
 }
 
 function htmlPostCandidates(doc: Document, sourceUrl: string): Array<{ title: string; postUrl: string }> {
@@ -310,12 +326,20 @@ async function enrichFeedEntries(
   entries: FeedEntry[],
   sourceUrl: string,
   sourceSignal: AbortSignal,
-): Promise<FeedEntry[]> {
-  const enriched: FeedEntry[] = []
-  for (const entry of entries) {
-    enriched.push(await enrichFeedEntry(entry, sourceUrl, sourceSignal))
-  }
-  return enriched
+): Promise<PreparedEntries<FeedEntry>> {
+  const feedEntries = entries.slice(0, MAX_POSTS_PER_SOURCE)
+  const existingByUrl = await existingPostsByUrl(feedEntries.map((entry) => entry.postUrl))
+  const enrichedFeed = await mapWithConcurrency(
+    feedEntries,
+    ENRICHMENT_CONCURRENCY,
+    async (entry) => {
+      const existing = existingByUrl.get(entry.postUrl)
+      return hasReusableMetadata(existing)
+        ? { ...entry, summary: existing.summary, thumbnail: existing.thumbnail }
+        : enrichFeedEntry(entry, sourceUrl, sourceSignal)
+    },
+  )
+  return { entries: enrichedFeed, existingByUrl }
 }
 
 async function enrichFeedEntry(
@@ -397,13 +421,34 @@ function toPost({
   }
 }
 
-async function upsertPost(post: Post): Promise<boolean> {
-  const existing = await db.posts.get({ postUrl: post.postUrl })
-  await db.posts.put({
-    ...post,
-    ...(existing?.id !== undefined ? { id: existing.id } : {}),
+async function existingPostsByUrl(postUrls: readonly string[]): Promise<Map<string, Post>> {
+  if (postUrls.length === 0) return new Map()
+  const rows = await db.posts.where('postUrl').anyOf([...postUrls]).toArray()
+  return new Map(rows.map((post) => [post.postUrl, post]))
+}
+
+function hasReusableMetadata(post: Post | undefined): post is PostWithReusableMetadata {
+  return (
+    post !== undefined &&
+    post.summary.trim().length > 0 &&
+    post.thumbnail !== undefined &&
+    post.thumbnail !== PLACEHOLDER_THUMBNAIL
+  )
+}
+
+async function upsertPosts(
+  posts: readonly Post[],
+  existingByUrl: ReadonlyMap<string, Post>,
+): Promise<number> {
+  const rows = posts.map((post) => {
+    const existing = existingByUrl.get(post.postUrl)
+    return existing?.id === undefined ? post : { ...post, id: existing.id }
   })
-  return existing === undefined
+
+  await db.transaction('rw', db.posts, async () => {
+    await db.posts.bulkPut(rows)
+  })
+  return posts.filter((post) => !existingByUrl.has(post.postUrl)).length
 }
 
 async function fetchMaybe(
