@@ -37,6 +37,20 @@ export async function ensureSourcePermission(sourceId: number, sourceUrl: string
   return granted
 }
 
+export async function removePermissionWhenOriginUnused(sourceUrl: string): Promise<boolean> {
+  const origin = originPatternForUrl(sourceUrl)
+  const sources = await db.sources.toArray()
+  const stillUsed = sources.some((source) => originPatternForUrl(source.url) === origin)
+
+  if (stillUsed) {
+    return false
+  }
+
+  return new Promise((resolve) => {
+    chrome.permissions.remove({ origins: [origin] }, resolve)
+  })
+}
+
 function containsOrigin(origin: string): Promise<boolean> {
   return new Promise((resolve) => {
     chrome.permissions.contains({ origins: [origin] }, resolve)

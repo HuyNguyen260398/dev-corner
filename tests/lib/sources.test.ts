@@ -7,6 +7,7 @@ import { db } from '../../src/lib/db'
 
 beforeEach(async () => {
   await db.favoritePosts.clear()
+  await db.posts.clear()
   await db.sources.clear()
 })
 
@@ -35,9 +36,43 @@ describe('addSource', () => {
 })
 
 describe('deleteSource', () => {
-  it('removes the source by id', async () => {
+  it('removes the source and its posts while retaining favorite snapshots', async () => {
     const id = await addSource('https://blog.test')
-    await deleteSource(id)
-    expect(await listSources()).toHaveLength(0)
+    await db.posts.bulkAdd([
+      {
+        sourceId: id,
+        sourceUrl: 'https://blog.test',
+        title: 'Post one',
+        summary: 'Summary one',
+        postUrl: 'https://blog.test/post-one',
+        crawledAt: 1,
+        crawlDay: '2026-06-28',
+      },
+      {
+        sourceId: id,
+        sourceUrl: 'https://blog.test',
+        title: 'Post two',
+        summary: 'Summary two',
+        postUrl: 'https://blog.test/post-two',
+        crawledAt: 2,
+        crawlDay: '2026-06-28',
+      },
+    ])
+    await db.favoritePosts.add({
+      postUrl: 'https://blog.test/post-one',
+      title: 'Post one',
+      summary: 'Summary one',
+      sourceUrl: 'https://blog.test',
+      sourceTitle: 'Blog',
+      crawledAt: 1,
+      favoritedAt: 3,
+    })
+
+    const deleted = await deleteSource(id)
+
+    expect(deleted?.url).toBe('https://blog.test')
+    await expect(db.sources.count()).resolves.toBe(0)
+    await expect(db.posts.where('sourceId').equals(id).count()).resolves.toBe(0)
+    await expect(db.favoritePosts.count()).resolves.toBe(1)
   })
 })

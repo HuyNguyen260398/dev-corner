@@ -25,9 +25,18 @@ export async function addSource(url: string, title?: string): Promise<number> {
   })
 }
 
-/** Remove a source by id. No-op if it no longer exists. */
-export async function deleteSource(id: number): Promise<void> {
-  await db.sources.delete(id)
+/** Remove a source and its cached posts. No-op if it no longer exists. */
+export async function deleteSource(id: number): Promise<Source | undefined> {
+  return db.transaction('rw', db.sources, db.posts, async () => {
+    const source = await db.sources.get(id)
+    if (source === undefined) {
+      return undefined
+    }
+
+    await db.posts.where('sourceId').equals(id).delete()
+    await db.sources.delete(id)
+    return source
+  })
 }
 
 /** All saved sources, newest first. */

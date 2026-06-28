@@ -6,6 +6,7 @@ import { crawlAll, crawlSourceById, isCrawlInProgress } from './crawl'
 import { registerNotificationClickHandler } from './notifications'
 import {
   markSourcePermissionResult,
+  removePermissionWhenOriginUnused,
   requestAndMarkSourcePermission,
   requestStoredSourcePermission,
 } from './permissions'
@@ -69,7 +70,12 @@ chrome.runtime.onMessage.addListener(
         return true
       case 'DELETE_SOURCE':
         deleteSource(message.sourceId)
-          .then(() => sendResponse({ ok: true }))
+          .then(async (deletedSource) => {
+            if (deletedSource !== undefined) {
+              await removePermissionWhenOriginUnused(deletedSource.url)
+            }
+            sendResponse({ ok: true })
+          })
           .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
         return true
       case 'REQUEST_SOURCE_PERMISSION':

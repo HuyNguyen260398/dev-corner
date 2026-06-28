@@ -55,7 +55,13 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
   try {
     const hasPermission = await ensureSourcePermission(persistedSource.id, persistedSource.url)
     if (!hasPermission) {
-      return { ok: true, sourceId: persistedSource.id, postsWritten: 0, newPostsWritten: 0 }
+      return {
+        ok: false,
+        sourceId: persistedSource.id,
+        postsWritten: 0,
+        newPostsWritten: 0,
+        error: `Permission required for ${persistedSource.url}`,
+      }
     }
 
     const fetchedPage = cachedFeedUrl ? undefined : await fetchText(persistedSource.url)

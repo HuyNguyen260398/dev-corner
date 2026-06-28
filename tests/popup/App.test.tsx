@@ -12,12 +12,12 @@ beforeEach(async () => {
   await db.posts.clear()
   await db.sources.clear()
   responses = {
-    GET_SETTINGS: { ok: true, settings: { enableDailyCron: true, enableDailyNotifications: true } },
+    GET_SETTINGS: { ok: true, settings: { enableDailyCron: true, enableDailyNotifications: false } },
     GET_CRAWL_STATUS: { ok: true, crawlInProgress: false },
     CRAWL_ALL: { ok: true, sourcesCrawled: 0, postsWritten: 0, newPostsWritten: 0, failures: [] },
     UPDATE_SETTINGS: {
       ok: true,
-      settings: { enableDailyCron: false, enableDailyNotifications: true },
+      settings: { enableDailyCron: false, enableDailyNotifications: false },
     },
   }
   vi.stubGlobal('chrome', {
@@ -63,6 +63,10 @@ describe('App scheduling controls', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    expect(screen.getByRole('checkbox', { name: 'Daily notifications' })).toHaveProperty(
+      'checked',
+      false,
+    )
     fireEvent.click(screen.getByRole('checkbox', { name: 'Daily 07:00 crawl' }))
     await waitFor(() => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
@@ -75,7 +79,7 @@ describe('App scheduling controls', () => {
     await waitFor(() => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
         type: 'UPDATE_SETTINGS',
-        settings: { enableDailyNotifications: false },
+        settings: { enableDailyNotifications: true },
       })
     })
   })

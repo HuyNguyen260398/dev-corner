@@ -18,6 +18,7 @@ interface MockStorageArea {
 interface MockPermissions {
   contains: ReturnType<typeof vi.fn>
   request: ReturnType<typeof vi.fn>
+  remove: ReturnType<typeof vi.fn>
 }
 
 interface ListenerSlot<T extends (...args: never[]) => unknown> {
@@ -58,6 +59,7 @@ beforeEach(async () => {
 
   await db.posts.clear()
   await db.sources.clear()
+  await db.favoritePosts.clear()
 
   storage = installChromeMock()
 })
@@ -415,7 +417,7 @@ describe('crawlSource', () => {
     })
   })
 
-  it('skips fetches and marks the source when origin permission is missing', async () => {
+  it('reports a failure and marks the source when origin permission is missing', async () => {
     permissions.contains.mockImplementation(
       (_request: chrome.permissions.Permissions, callback: (result: boolean) => void) => {
         callback(false)
@@ -429,7 +431,13 @@ describe('crawlSource', () => {
 
     const result = await crawlSource(source)
 
-    expect(result).toEqual({ ok: true, sourceId: source.id, postsWritten: 0, newPostsWritten: 0 })
+    expect(result).toEqual({
+      ok: false,
+      sourceId: source.id,
+      postsWritten: 0,
+      newPostsWritten: 0,
+      error: 'Permission required for https://blog.example.com/',
+    })
     expect(fetchMock).not.toHaveBeenCalled()
     await expect(db.sources.get(source.id)).resolves.toMatchObject({
       permissionState: 'needsPermission',
@@ -506,6 +514,34 @@ describe('crawlAll', () => {
 })
 
 describe('worker crawl wiring', () => {
+  it('removes an optional origin grant only after its final source is deleted', async () => {
+    const firstId = await db.sources.add({
+      url: 'https://blog.test/first',
+      title: 'First',
+      addedAt: 1,
+    })
+    const secondId = await db.sources.add({
+      url: 'https://blog.test/second',
+      title: 'Second',
+      addedAt: 2,
+    })
+    await import('../../src/background/index')
+    const listener = expectMessageListener()
+
+    await expect(
+      sendWorkerMessage(listener, { type: 'DELETE_SOURCE', sourceId: firstId }),
+    ).resolves.toEqual({ ok: true })
+    expect(permissions.remove).not.toHaveBeenCalled()
+
+    await expect(
+      sendWorkerMessage(listener, { type: 'DELETE_SOURCE', sourceId: secondId }),
+    ).resolves.toEqual({ ok: true })
+    expect(permissions.remove).toHaveBeenCalledWith(
+      { origins: ['https://blog.test/*'] },
+      expect.any(Function),
+    )
+  })
+
   it('requests an origin grant on source save and records denial without crawling', async () => {
     permissions.request.mockImplementation(
       (_request: chrome.permissions.Permissions, callback: (granted: boolean) => void) => {
@@ -673,12 +709,13 @@ describe('worker crawl wiring', () => {
       }),
     ).resolves.toEqual({
       ok: true,
-      settings: { enableDailyCron: false, enableDailyNotifications: true },
+      settings: { enableDailyCron: false, enableDailyNotifications: false },
     })
     expect(chrome.alarms.clear).toHaveBeenCalledWith('daily-0700-crawl', expect.any(Function))
   })
 
   it('crawls and reschedules when the daily alarm fires', async () => {
+    storage.values.settings = { enableDailyCron: true, enableDailyNotifications: true }
     vi.mocked(Date.now).mockReturnValue(new Date(2026, 5, 20, 7, 0, 0).getTime())
     installFetchMock({
       'https://blog.example.com/': pageWithFeed,
@@ -709,6 +746,7 @@ describe('worker crawl wiring', () => {
   })
 
   it('does not create a second daily notification on the same local day', async () => {
+    storage.values.settings = { enableDailyCron: true, enableDailyNotifications: true }
     vi.mocked(Date.now).mockReturnValue(new Date(2026, 5, 20, 7, 0, 0).getTime())
     installFetchMock({
       'https://blog.example.com/': pageWithFeed,
@@ -773,7 +811,7 @@ describe('worker crawl wiring', () => {
 
     await expect(sendWorkerMessage(listener, { type: 'GET_SETTINGS' })).resolves.toEqual({
       ok: true,
-      settings: { enableDailyCron: false, enableDailyNotifications: true },
+      settings: { enableDailyCron: false, enableDailyNotifications: false },
     })
     await expect(sendWorkerMessage(listener, { type: 'GET_CRAWL_STATUS' })).resolves.toEqual({
       ok: true,
@@ -903,6 +941,11 @@ function installChromeMock(): MockStorageArea {
     ),
     request: vi.fn(
       (_request: chrome.permissions.Permissions, callback: (granted: boolean) => void) => {
+        callback(true)
+      },
+    ),
+    remove: vi.fn(
+      (_request: chrome.permissions.Permissions, callback: (removed: boolean) => void) => {
         callback(true)
       },
     ),
