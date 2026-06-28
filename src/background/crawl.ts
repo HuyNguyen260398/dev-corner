@@ -9,13 +9,13 @@ import {
   resolveThumbnail,
 } from '../lib/thumbnail'
 import type { Post, Source } from '../lib/types'
+import { fetchText, SOURCE_TIMEOUT_MS, type FetchTextResult } from './fetch'
 import { ensureSourcePermission } from './permissions'
 
 export const CRAWL_QUEUE_KEY = 'crawlQueue'
 export const CRAWL_IN_PROGRESS_KEY = 'crawlInProgress'
 
 const MAX_POSTS_PER_SOURCE = 5
-const FETCH_TIMEOUT_MS = 15_000
 const NON_POST_PATH_PREFIXES = ['/author', '/authors', '/category', '/page', '/tag', '/tags']
 
 export interface CrawlSourceResult {
@@ -41,11 +41,6 @@ interface HtmlEntry {
   thumbnail: string
 }
 
-interface FetchTextResult {
-  url: string
-  text: string
-}
-
 /** Crawl one persisted source, upserting at most five newest posts. */
 export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
   if (source.id == null) {
@@ -55,6 +50,7 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
   const cachedFeedUrl = sameOriginUrl(source.feedUrl, source.url)
 
   try {
+    const sourceSignal = AbortSignal.timeout(SOURCE_TIMEOUT_MS)
     const hasPermission = await ensureSourcePermission(persistedSource.id, persistedSource.url)
     if (!hasPermission) {
       return {
@@ -66,12 +62,17 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
       }
     }
 
-    const fetchedPage = cachedFeedUrl ? undefined : await fetchText(persistedSource.url)
-    const feed = await resolveFeed(persistedSource, fetchedPage, cachedFeedUrl)
+    const fetchedPage = cachedFeedUrl
+      ? undefined
+      : await fetchText(persistedSource.url, sourceSignal)
+    const feed = await resolveFeed(persistedSource, fetchedPage, cachedFeedUrl, sourceSignal)
     const entries =
       feed === undefined
-        ? await extractHtmlEntries(fetchedPage ?? (await fetchText(persistedSource.url)))
-        : await enrichFeedEntries(parseFeed(feed.text), persistedSource.url)
+        ? await extractHtmlEntries(
+            fetchedPage ?? (await fetchText(persistedSource.url, sourceSignal)),
+            sourceSignal,
+          )
+        : await enrichFeedEntries(parseFeed(feed.text), persistedSource.url, sourceSignal)
 
     const now = Date.now()
     const crawlDay = localDateKey(new Date(now))
@@ -183,9 +184,10 @@ async function resolveFeed(
   source: Source,
   fetchedPage: FetchTextResult | undefined,
   cachedFeedUrl: string | undefined,
+  sourceSignal: AbortSignal,
 ): Promise<FetchTextResult | undefined> {
   if (cachedFeedUrl !== undefined) {
-    return fetchText(cachedFeedUrl)
+    return fetchText(cachedFeedUrl, sourceSignal)
   }
 
   if (fetchedPage === undefined) return undefined
@@ -193,25 +195,28 @@ async function resolveFeed(
   const declaredFeedUrl = discoverFeedUrl(fetchedPage.text, source.url)
   const sameOriginDeclaredFeedUrl = sameOriginUrl(declaredFeedUrl, source.url)
   if (sameOriginDeclaredFeedUrl !== undefined) {
-    const feed = await fetchMaybe(sameOriginDeclaredFeedUrl)
+    const feed = await fetchMaybe(sameOriginDeclaredFeedUrl, sourceSignal)
     if (feed !== undefined && parseFeed(feed.text).length > 0) return feed
   }
 
   for (const candidate of feedProbeUrls(source.url)) {
-    const feed = await fetchMaybe(candidate)
+    const feed = await fetchMaybe(candidate, sourceSignal)
     if (feed !== undefined && parseFeed(feed.text).length > 0) return feed
   }
 
   return undefined
 }
 
-async function extractHtmlEntries(fetchedPage: FetchTextResult): Promise<HtmlEntry[]> {
+async function extractHtmlEntries(
+  fetchedPage: FetchTextResult,
+  sourceSignal: AbortSignal,
+): Promise<HtmlEntry[]> {
   const doc = parseMarkup(fetchedPage.text, 'text/html')
   const candidates = htmlPostCandidates(doc, fetchedPage.url).slice(0, MAX_POSTS_PER_SOURCE)
 
   const entries: HtmlEntry[] = []
   for (const candidate of candidates) {
-    entries.push(await enrichHtmlEntry(candidate))
+    entries.push(await enrichHtmlEntry(candidate, sourceSignal))
   }
   return entries
 }
@@ -301,20 +306,28 @@ function isLikelyPostUrl(postUrl: string, sourceUrl: string): boolean {
   return !NON_POST_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 }
 
-async function enrichFeedEntries(entries: FeedEntry[], sourceUrl: string): Promise<FeedEntry[]> {
+async function enrichFeedEntries(
+  entries: FeedEntry[],
+  sourceUrl: string,
+  sourceSignal: AbortSignal,
+): Promise<FeedEntry[]> {
   const enriched: FeedEntry[] = []
   for (const entry of entries) {
-    enriched.push(await enrichFeedEntry(entry, sourceUrl))
+    enriched.push(await enrichFeedEntry(entry, sourceUrl, sourceSignal))
   }
   return enriched
 }
 
-async function enrichFeedEntry(entry: FeedEntry, sourceUrl: string): Promise<FeedEntry> {
+async function enrichFeedEntry(
+  entry: FeedEntry,
+  sourceUrl: string,
+  sourceSignal: AbortSignal,
+): Promise<FeedEntry> {
   if (entry.thumbnail !== PLACEHOLDER_THUMBNAIL) return entry
   const postUrl = sameOriginUrl(entry.postUrl, sourceUrl)
   if (postUrl === undefined) return entry
 
-  const page = await fetchMaybe(postUrl)
+  const page = await fetchMaybe(postUrl, sourceSignal)
   if (page === undefined) return entry
 
   const doc = parseMarkup(page.text, 'text/html')
@@ -330,8 +343,11 @@ async function enrichFeedEntry(entry: FeedEntry, sourceUrl: string): Promise<Fee
   }
 }
 
-async function enrichHtmlEntry(candidate: { title: string; postUrl: string }): Promise<HtmlEntry> {
-  const page = await fetchMaybe(candidate.postUrl)
+async function enrichHtmlEntry(
+  candidate: { title: string; postUrl: string },
+  sourceSignal: AbortSignal,
+): Promise<HtmlEntry> {
+  const page = await fetchMaybe(candidate.postUrl, sourceSignal)
   if (page === undefined) {
     return {
       ...candidate,
@@ -390,30 +406,14 @@ async function upsertPost(post: Post): Promise<boolean> {
   return existing === undefined
 }
 
-async function fetchText(url: string): Promise<FetchTextResult> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
+async function fetchMaybe(
+  url: string,
+  sourceSignal: AbortSignal,
+): Promise<FetchTextResult | undefined> {
   try {
-    const response = await fetch(url, { signal: controller.signal })
-    if (!response.ok) {
-      throw new Error(`Fetch failed for ${url}: HTTP ${response.status}`)
-    }
-    return { url, text: await response.text() }
+    return await fetchText(url, sourceSignal)
   } catch (error) {
-    if (controller.signal.aborted) {
-      throw new Error(`Fetch timed out after 15 seconds for ${url}`, { cause: error })
-    }
-    throw error
-  } finally {
-    clearTimeout(timeoutId)
-  }
-}
-
-async function fetchMaybe(url: string): Promise<FetchTextResult | undefined> {
-  try {
-    return await fetchText(url)
-  } catch {
+    if (sourceSignal.aborted) throw error
     return undefined
   }
 }

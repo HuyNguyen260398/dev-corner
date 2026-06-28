@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { crawlAll, crawlSource, CRAWL_QUEUE_KEY } from '../../src/background/crawl'
+import { MAX_MARKUP_BYTES, SOURCE_TIMEOUT_MS } from '../../src/background/fetch'
 import { db } from '../../src/lib/db'
 import type { Source, WorkerRequest, WorkerResponse } from '../../src/lib/types'
 
@@ -403,50 +404,118 @@ describe('crawlSource', () => {
     expect(await db.posts.count()).toBe(0)
   })
 
-  it('aborts and records a source fetch that exceeds 15 seconds', async () => {
-    const realSetTimeout = globalThis.setTimeout
-    let triggerTimeout: (() => void) | undefined
-    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(
-      ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
-        if (timeout === 15_000 && typeof handler === 'function') {
-          triggerTimeout = () => handler(...args)
-          return 0 as unknown as ReturnType<typeof setTimeout>
-        }
-        return Reflect.apply(realSetTimeout, globalThis, [handler, timeout, ...args]) as ReturnType<
-          typeof setTimeout
-        >
-      }) as unknown as typeof setTimeout,
-    )
+  it('aborts and records a crawl that exceeds the shared source deadline', async () => {
+    const sourceTimeout = new AbortController()
+    const requestTimeout = new AbortController()
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, 'timeout')
+      .mockReturnValueOnce(sourceTimeout.signal)
+      .mockReturnValue(requestTimeout.signal)
+    let rejectFetch: ((reason?: unknown) => void) | undefined
     const fetchMock = vi.fn(
-      (_input: URL | RequestInfo, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
-            once: true,
-          })
-        }),
+      (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = String(input)
+        if (url === 'https://slow.example.com/') {
+          return Promise.resolve(httpResponse(pageWithFeed, url))
+        }
+        if (url !== 'https://slow.example.com/feed.xml') {
+          return Promise.resolve(httpResponse('', url, 404))
+        }
+        return new Promise<Response>((_resolve, reject) => {
+          rejectFetch = reject
+          if (init?.signal?.aborted === true) {
+            reject(new DOMException('Aborted', 'AbortError'))
+            return
+          }
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          )
+        })
+      },
     )
     vi.stubGlobal('fetch', fetchMock)
     const source = await addSourceRow('https://slow.example.com/')
 
     const crawl = crawlSource(source)
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://slow.example.com/',
+      'https://slow.example.com/feed.xml',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
-    expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 15_000)
-    if (triggerTimeout === undefined) throw new Error('Expected the fetch timeout callback')
-    triggerTimeout()
+    sourceTimeout.abort()
+    rejectFetch?.(new DOMException('Aborted', 'AbortError'))
 
     await expect(crawl).resolves.toEqual({
       ok: false,
       sourceId: source.id,
       postsWritten: 0,
       newPostsWritten: 0,
-      error: 'Fetch timed out after 15 seconds for https://slow.example.com/',
+      error: 'Source crawl timed out after 30 seconds for https://slow.example.com/feed.xml',
+    })
+    expect(timeoutSpy).toHaveBeenNthCalledWith(1, SOURCE_TIMEOUT_MS)
+    await expect(db.sources.get(source.id)).resolves.toMatchObject({
+      lastError: 'Source crawl timed out after 30 seconds for https://slow.example.com/feed.xml',
+    })
+  })
+
+  it('records a redirect to an origin without permission', async () => {
+    permissions.contains.mockImplementation(
+      (request: chrome.permissions.Permissions, callback: (result: boolean) => void) => {
+        callback(request.origins?.[0] === 'https://blog.example.com/*')
+      },
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => httpResponse('<rss version="2.0"></rss>', 'https://redirected.test/feed')),
+    )
+    const source = await addSourceRow('https://blog.example.com/')
+
+    const result = await crawlSource(source)
+
+    expect(result).toEqual({
+      ok: false,
+      sourceId: source.id,
+      postsWritten: 0,
+      newPostsWritten: 0,
+      error: 'Redirected to an origin without permission: https://redirected.test/feed',
     })
     await expect(db.sources.get(source.id)).resolves.toMatchObject({
-      lastError: 'Fetch timed out after 15 seconds for https://slow.example.com/',
+      lastError: 'Redirected to an origin without permission: https://redirected.test/feed',
+    })
+  })
+
+  it('records a streamed source body that exceeds the markup limit', async () => {
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input)
+      if (url !== 'https://large.example.com/') {
+        return httpResponse('', url, 404)
+      }
+      const chunk = new Uint8Array(MAX_MARKUP_BYTES / 2 + 1)
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(chunk)
+          controller.enqueue(chunk)
+          controller.close()
+        },
+      })
+      return httpResponse(body, url)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const source = await addSourceRow('https://large.example.com/')
+
+    const result = await crawlSource(source)
+
+    expect(result).toEqual({
+      ok: false,
+      sourceId: source.id,
+      postsWritten: 0,
+      newPostsWritten: 0,
+      error: 'Response exceeded 2097152 bytes for https://large.example.com/',
+    })
+    await expect(db.sources.get(source.id)).resolves.toMatchObject({
+      lastError: 'Response exceeded 2097152 bytes for https://large.example.com/',
     })
   })
 
@@ -933,16 +1002,18 @@ function oldPost(crawlDay: string, id: number) {
 function installFetchMock(responses: FetchMap): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
     const url = String(input)
-    const response = responses[url]
-    if (response instanceof Error) throw response
-    return {
-      ok: response !== undefined,
-      status: response === undefined ? 404 : 200,
-      text: async () => response ?? '',
-    } as Response
+    const body = responses[url]
+    if (body instanceof Error) throw body
+    return httpResponse(body ?? '', url, body === undefined ? 404 : 200)
   })
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
+}
+
+function httpResponse(body: BodyInit | null, url: string, status = 200): Response {
+  const value = new Response(body, { status })
+  Object.defineProperty(value, 'url', { value: url })
+  return value
 }
 
 function installChromeMock(): MockStorageArea {
