@@ -27,6 +27,7 @@ describe('PostCard', () => {
           title: 'Post title',
           summary: 'Summary',
           thumbnail: 'https://source.test/thumb.jpg',
+          sourceUrl: 'https://source.test/feed',
           sourceTitle: 'Source',
           timestamp: 1,
         }}
@@ -39,5 +40,51 @@ describe('PostCard', () => {
     const button = screen.getByRole('button', { name: 'Remove Post title from favorites' })
     expect(button.getAttribute('aria-pressed')).toBe('true')
     expect(button).toHaveProperty('disabled', true)
+  })
+
+  it('loads same-origin thumbnails lazily with asynchronous decoding', () => {
+    render(
+      <PostCard
+        post={{
+          postUrl: 'https://source.test/post',
+          title: 'Post title',
+          summary: 'Summary',
+          thumbnail: 'https://source.test/thumb.jpg',
+          sourceUrl: 'https://source.test/feed',
+          sourceTitle: 'Source',
+          timestamp: 1,
+        }}
+        favorite={false}
+        pending={false}
+        onToggleFavorite={vi.fn()}
+      />,
+    )
+
+    const image = screen.getByRole('img', { name: 'Post title thumbnail' })
+    expect(image.getAttribute('src')).toBe('https://source.test/thumb.jpg')
+    expect(image.getAttribute('loading')).toBe('lazy')
+    expect(image.getAttribute('decoding')).toBe('async')
+  })
+
+  it('replaces off-origin thumbnails without rendering the remote URL', () => {
+    const { container } = render(
+      <PostCard
+        post={{
+          postUrl: 'https://source.test/post',
+          title: 'Post title',
+          summary: 'Summary',
+          thumbnail: 'https://cdn.test/thumb.jpg',
+          sourceUrl: 'https://source.test/feed',
+          sourceTitle: 'Source',
+          timestamp: 1,
+        }}
+        favorite={false}
+        pending={false}
+        onToggleFavorite={vi.fn()}
+      />,
+    )
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('/placeholder.svg')
+    expect(container.innerHTML).not.toContain('https://cdn.test/thumb.jpg')
   })
 })

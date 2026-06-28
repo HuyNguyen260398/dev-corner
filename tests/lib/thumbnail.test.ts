@@ -3,6 +3,7 @@ import {
   resolveThumbnail,
   firstImageSrc,
   PLACEHOLDER_THUMBNAIL,
+  renderableThumbnail,
 } from '../../src/lib/thumbnail'
 
 describe('firstImageSrc', () => {
@@ -71,5 +72,28 @@ describe('resolveThumbnail fallback chain', () => {
         baseUrl: 'https://x.test/posts/a',
       }),
     ).toBe('https://x.test/content.jpg')
+  })
+})
+
+describe('renderableThumbnail', () => {
+  it('allows HTTPS images from the saved source origin', () => {
+    expect(
+      renderableThumbnail('https://blog.test/images/post.webp', 'https://blog.test/feed'),
+    ).toBe('https://blog.test/images/post.webp')
+  })
+
+  it.each([
+    'https://cdn.test/post.webp',
+    'http://blog.test/post.webp',
+    'data:image/png;base64,AAAA',
+    'javascript:alert(1)',
+  ])('replaces disallowed thumbnail %s', (thumbnail) => {
+    expect(renderableThumbnail(thumbnail, 'https://blog.test')).toBe(PLACEHOLDER_THUMBNAIL)
+  })
+
+  it('keeps the packaged placeholder', () => {
+    expect(renderableThumbnail(PLACEHOLDER_THUMBNAIL, 'https://blog.test')).toBe(
+      PLACEHOLDER_THUMBNAIL,
+    )
   })
 })

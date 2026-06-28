@@ -87,7 +87,7 @@ describe('crawlSource', () => {
       sourceUrl: 'https://blog.example.com/',
       title: 'Post One',
       summary: 'First post body with HTML and an image.',
-      thumbnail: 'https://example.com/thumb-1.jpg',
+      thumbnail: '/placeholder.svg',
       postUrl: 'https://example.com/post-1',
       publishedAt: Date.parse('Fri, 20 Jun 2026 09:00:00 GMT'),
       crawledAt: Date.now(),
@@ -97,6 +97,39 @@ describe('crawlSource', () => {
       feedUrl: 'https://blog.example.com/feed.xml',
       lastCrawledAt: Date.now(),
     })
+  })
+
+  it('replaces off-origin feed media before storing the post', async () => {
+    installFetchMock({
+      'https://blog.test/': `<!doctype html>
+        <html><head>
+          <link rel="alternate" type="application/rss+xml" href="/feed.xml" />
+        </head><body></body></html>`,
+      'https://blog.test/feed.xml': `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel>
+          <item>
+            <title>Post with CDN media</title>
+            <link>https://blog.test/post-with-cdn-media</link>
+            <description>Feed summary.</description>
+            <media:thumbnail url="https://cdn.test/image.jpg" />
+          </item>
+        </channel></rss>`,
+    })
+    const source = await addSourceRow('https://blog.test/')
+
+    await expect(crawlSource(source)).resolves.toMatchObject({
+      ok: true,
+      postsWritten: 1,
+      newPostsWritten: 1,
+    })
+
+    await expect(db.posts.toArray()).resolves.toMatchObject([
+      {
+        title: 'Post with CDN media',
+        thumbnail: '/placeholder.svg',
+        postUrl: 'https://blog.test/post-with-cdn-media',
+      },
+    ])
   })
 
   it('crawls in a service-worker-like runtime without global DOMParser', async () => {
@@ -287,7 +320,7 @@ describe('crawlSource', () => {
     ])
   })
 
-  it('uses an AWS image fallback for AWS Blogs posts with no crawled thumbnail', async () => {
+  it('uses the packaged placeholder for AWS Blogs posts with no crawled thumbnail', async () => {
     installFetchMock({
       'https://aws.amazon.com/blogs/': `<!doctype html>
         <html><head>
@@ -318,7 +351,7 @@ describe('crawlSource', () => {
     await expect(db.posts.toArray()).resolves.toMatchObject([
       {
         title: 'AWS post without image metadata',
-        thumbnail: 'https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png',
+        thumbnail: '/placeholder.svg',
         postUrl: 'https://aws.amazon.com/blogs/example/post-without-image/',
       },
     ])

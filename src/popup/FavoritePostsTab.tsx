@@ -47,6 +47,7 @@ export function FavoritePostsTab({
                 title: favorite.title,
                 summary: favorite.summary,
                 ...(favorite.thumbnail !== undefined ? { thumbnail: favorite.thumbnail } : {}),
+                sourceUrl: favorite.sourceUrl,
                 sourceTitle: favorite.sourceTitle,
                 timestamp: favorite.publishedAt ?? favorite.crawledAt,
               }}

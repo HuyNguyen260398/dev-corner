@@ -4,9 +4,9 @@
 // (CON-004).
 
 import { parseMarkup } from './dom'
+import { PLACEHOLDER_THUMBNAIL } from './thumbnail-policy'
 
-/** Bundled placeholder shown when a post yields no usable image. */
-export const PLACEHOLDER_THUMBNAIL = '/placeholder.svg'
+export { PLACEHOLDER_THUMBNAIL, renderableThumbnail } from './thumbnail-policy'
 
 /** First `<img>` src found in a fragment of content HTML, if any. */
 export function firstImageSrc(html: string | undefined): string | undefined {
