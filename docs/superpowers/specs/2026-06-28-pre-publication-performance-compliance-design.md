@@ -22,7 +22,7 @@ The current publication plan assumes the extension is already Web Store-ready. R
 - Startup, alarm, and manual refresh events can call `crawlAll()` concurrently within one service-worker lifetime.
 - Each request has a 15-second timeout, but feed probes and enrichment requests can accumulate into a source crawl or full queue that approaches Chrome's service-worker execution limit.
 - Response bodies are read without a byte limit.
-- Remote thumbnail URLs can cause popup network requests to origins other than the saved source. The hard-coded AWS fallback is one explicit example. This conflicts with the repository constraint and proposed privacy statement that network calls only target user-saved sources.
+- Remote thumbnail URLs can cause popup network requests to origins other than the saved source. The hard-coded AWS fallback was one undeclared example; the implemented policy now permits only HTTPS image URLs explicitly selected by saved-source content and discloses third-party image hosts.
 - The popup reads `tabs.Tab.url` and `tabs.Tab.title`, but `manifest.config.ts` does not declare `activeTab`. Chrome documents `activeTab` as the narrow, warning-free permission for reading those properties after the user invokes the action.
 - The proposed publication disclosures say no personal data is collected or used. Chrome's policy uses the broader concept of data the product handles, including locally stored user-provided data and automatically gathered content. Dashboard answers, privacy policy wording, and actual behavior must be reconciled rather than relying on the phrase “fully local.”
 
@@ -130,11 +130,11 @@ Fetched markup is treated as untrusted data. It is parsed without `innerHTML`, `
 A thumbnail is renderable only when it is:
 
 - a packaged extension asset; or
-- an HTTPS URL with the same origin as the saved source.
+- a valid HTTPS URL explicitly selected by the saved source's feed or page content.
 
-Feed media, Open Graph images, and content images on a different origin are normalized to `undefined`; the popup renders the packaged fallback and never requests the remote URL. Existing persisted off-origin thumbnail URLs are rejected by the same render-time policy, so no data migration is required. The hard-coded AWS image fallback is removed. Post cards use `loading="lazy"`, `decoding="async"`, fixed dimensions, and a local visual fallback when an allowed image fails.
+Feed media, Open Graph images, and content images may reference a third-party image host. HTTP, `data:`, executable, and malformed URLs are normalized to the packaged fallback. Existing persisted thumbnail URLs are checked by the same render-time policy, so no data migration is required. The hard-coded AWS image fallback is removed. Post cards use `loading="lazy"`, `decoding="async"`, fixed dimensions, and a local visual fallback when an allowed image fails.
 
-This boundary keeps popup requests within the origin deliberately saved by the user, prevents unrelated CDN contacts, avoids mixed-content thumbnail loads, and makes the privacy statement testable. It does not interpret image or markup bytes as executable logic.
+This boundary supports publishers that use external CDNs while preventing mixed-content and executable URL loads. Publication disclosures state that a source-selected image host receives ordinary request metadata. Remote image and markup bytes remain data and are never interpreted as executable logic.
 
 ## Manifest and Permission Design
 
@@ -221,7 +221,7 @@ Publication may begin only when all automated gates pass, manual testing has no 
 - Concurrent crawl triggers do not duplicate physical work.
 - Unchanged cached feeds do not repeatedly fetch post pages for enrichment.
 - Crawls respect request, source, response-size, concurrency, and invocation bounds and recover through the persisted queue.
-- Popup network requests cannot target a thumbnail origin unrelated to the saved source.
+- Popup thumbnail requests target only valid HTTPS URLs explicitly selected by saved-source content.
 - The manifest requests only permissions exercised by production features, including `activeTab` for current-tab metadata.
 - The built ZIP contains no remote or dynamically evaluated code.
 - The privacy policy, dashboard responses, listing copy, manifest, reviewer instructions, and runtime behavior agree.

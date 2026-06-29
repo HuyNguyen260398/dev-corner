@@ -2,14 +2,25 @@
 // Here we register the "Save to dev-corner" context menu (F12), save through the
 // shared src/lib/sources path, and trigger background-only crawling. No in-memory
 // state is relied upon between events (CON-002).
-import { crawlAll, crawlSourceById, isCrawlInProgress } from './crawl'
+import {
+  CRAWL_CONTINUATION_ALARM,
+  crawlAll,
+  crawlSourceById,
+  isCrawlInProgress,
+} from './crawl'
 import { registerNotificationClickHandler } from './notifications'
 import {
   markSourcePermissionResult,
+  removePermissionWhenOriginUnused,
   requestAndMarkSourcePermission,
   requestStoredSourcePermission,
 } from './permissions'
-import { configureDailyAlarm, handleDailyAlarm } from './scheduler'
+import {
+  configureDailyAlarm,
+  DAILY_CRAWL_ALARM,
+  handleCrawlContinuationAlarm,
+  handleDailyAlarm,
+} from './scheduler'
 import { getSettings, updateSettings } from './settings'
 import { addFavorite, removeFavorite } from '../lib/favorites'
 import { addSource, deleteSource } from '../lib/sources'
@@ -36,7 +47,13 @@ chrome.runtime.onStartup.addListener(() => {
 })
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  void handleDailyAlarm(alarm).catch(() => undefined)
+  if (alarm.name === DAILY_CRAWL_ALARM) {
+    void handleDailyAlarm(alarm).catch(() => undefined)
+    return
+  }
+  if (alarm.name === CRAWL_CONTINUATION_ALARM) {
+    void handleCrawlContinuationAlarm(alarm).catch(() => undefined)
+  }
 })
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -69,7 +86,12 @@ chrome.runtime.onMessage.addListener(
         return true
       case 'DELETE_SOURCE':
         deleteSource(message.sourceId)
-          .then(() => sendResponse({ ok: true }))
+          .then(async (deletedSource) => {
+            if (deletedSource !== undefined) {
+              await removePermissionWhenOriginUnused(deletedSource.url)
+            }
+            sendResponse({ ok: true })
+          })
           .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
         return true
       case 'REQUEST_SOURCE_PERMISSION':
@@ -95,7 +117,16 @@ chrome.runtime.onMessage.addListener(
         return true
       case 'CRAWL_ALL':
         crawlAll()
-          .then((result) => sendResponse(result))
+          .then((result) =>
+            sendResponse({
+              ok: true,
+              sourcesCrawled: result.sourcesCrawled,
+              postsWritten: result.postsWritten,
+              newPostsWritten: result.newPostsWritten,
+              failures: result.failures,
+              crawlCompleted: result.completed,
+            }),
+          )
           .catch((e) => sendResponse({ ok: false, error: errorMessage(e) }))
         return true
       case 'ADD_FAVORITE':

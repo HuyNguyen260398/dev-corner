@@ -1,4 +1,4 @@
-import { crawlAll, type CrawlAllResult } from './crawl'
+import { CRAWL_CONTINUATION_ALARM, crawlAll, type CrawlAllResult } from './crawl'
 import {
   createDailyDigestNotification,
   getLastDigestNotificationDate,
@@ -35,11 +35,23 @@ export async function handleDailyAlarm(alarm: chrome.alarms.Alarm): Promise<void
   }
 
   try {
-    const result = await crawlAll()
-    await maybeNotifyDailyDigest(result, settings)
+    const result = await crawlAll({ notificationRequested: true })
+    if (result.completed) {
+      await maybeNotifyDailyDigest(result, settings)
+    }
   } finally {
     await configureDailyAlarm()
   }
+}
+
+export async function handleCrawlContinuationAlarm(alarm: chrome.alarms.Alarm): Promise<void> {
+  if (alarm.name !== CRAWL_CONTINUATION_ALARM) return
+
+  const result = await crawlAll()
+  if (!result.completed || !result.notificationRequested) return
+
+  const settings = await getSettings()
+  await maybeNotifyDailyDigest(result, settings)
 }
 
 async function maybeNotifyDailyDigest(result: CrawlAllResult, settings: Settings): Promise<void> {

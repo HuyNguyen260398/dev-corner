@@ -118,7 +118,7 @@ export function App() {
   async function setDailyCron(enableDailyCron: boolean) {
     setError(null)
     setSettings((current) => ({
-      ...(current ?? { enableDailyCron, enableDailyNotifications: true }),
+      ...(current ?? { enableDailyCron, enableDailyNotifications: false }),
       enableDailyCron,
     }))
     const res = await send({ type: 'UPDATE_SETTINGS', settings: { enableDailyCron } })

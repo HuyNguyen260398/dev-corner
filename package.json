@@ -13,8 +13,10 @@
     "build": "vite build",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
+    "lint": "eslint .",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify:release": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm verify:package"
   },
   "dependencies": {
     "dexie": "^4.4.4",

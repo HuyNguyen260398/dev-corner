@@ -12,12 +12,19 @@ beforeEach(async () => {
   await db.posts.clear()
   await db.sources.clear()
   responses = {
-    GET_SETTINGS: { ok: true, settings: { enableDailyCron: true, enableDailyNotifications: true } },
+    GET_SETTINGS: { ok: true, settings: { enableDailyCron: true, enableDailyNotifications: false } },
     GET_CRAWL_STATUS: { ok: true, crawlInProgress: false },
-    CRAWL_ALL: { ok: true, sourcesCrawled: 0, postsWritten: 0, newPostsWritten: 0, failures: [] },
+    CRAWL_ALL: {
+      ok: true,
+      sourcesCrawled: 0,
+      postsWritten: 0,
+      newPostsWritten: 0,
+      failures: [],
+      crawlCompleted: true,
+    },
     UPDATE_SETTINGS: {
       ok: true,
-      settings: { enableDailyCron: false, enableDailyNotifications: true },
+      settings: { enableDailyCron: false, enableDailyNotifications: false },
     },
   }
   vi.stubGlobal('chrome', {
@@ -63,6 +70,10 @@ describe('App scheduling controls', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    expect(screen.getByRole('checkbox', { name: 'Daily notifications' })).toHaveProperty(
+      'checked',
+      false,
+    )
     fireEvent.click(screen.getByRole('checkbox', { name: 'Daily 07:00 crawl' }))
     await waitFor(() => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
@@ -75,7 +86,7 @@ describe('App scheduling controls', () => {
     await waitFor(() => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
         type: 'UPDATE_SETTINGS',
-        settings: { enableDailyNotifications: false },
+        settings: { enableDailyNotifications: true },
       })
     })
   })
@@ -115,6 +126,57 @@ describe('App scheduling controls', () => {
         false,
       )
     })
+  })
+
+  it('clears local refresh progress while continuation remains storage-backed', async () => {
+    let resolveCrawl!: (response: WorkerResponse) => void
+    const pendingCrawl = new Promise<WorkerResponse>((resolve) => {
+      resolveCrawl = resolve
+    })
+    const sendMessage = chrome.runtime.sendMessage as unknown as ReturnType<typeof vi.fn>
+    sendMessage.mockImplementation((request: WorkerRequest) =>
+      request.type === 'CRAWL_ALL'
+        ? pendingCrawl
+        : Promise.resolve(
+            responses[request.type] ?? { ok: false, error: `Unhandled ${request.type}` },
+          ),
+    )
+
+    const view = render(<App />)
+    await waitFor(() => {
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ type: 'GET_CRAWL_STATUS' })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh digest' }))
+    expect(await screen.findByText('Refreshing latest posts...')).toBeTruthy()
+
+    resolveCrawl({
+      ok: true,
+      sourcesCrawled: 1,
+      postsWritten: 5,
+      newPostsWritten: 5,
+      failures: [],
+      crawlCompleted: false,
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Refreshing latest posts...')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Refresh digest' })).toHaveProperty(
+        'disabled',
+        false,
+      )
+    })
+
+    view.unmount()
+    responses.GET_CRAWL_STATUS = { ok: true, crawlInProgress: true }
+    sendMessage.mockImplementation((request: WorkerRequest) =>
+      Promise.resolve(
+        responses[request.type] ?? { ok: false, error: `Unhandled ${request.type}` },
+      ),
+    )
+    render(<App />)
+
+    expect(await screen.findByText('Refreshing latest posts...')).toBeTruthy()
   })
 })
 
@@ -462,7 +524,7 @@ function digestPost(id: number, crawlDay: string): Post {
     sourceUrl: `https://source-${id}.test`,
     title: `Post ${id}`,
     summary: `Summary ${id}`,
-    thumbnail: `https://post-${id}.test/thumb.jpg`,
+    thumbnail: `https://source-${id}.test/thumb.jpg`,
     postUrl: `https://post-${id}.test/`,
     publishedAt: Date.parse(`${crawlDay}T0${id}:00:00Z`),
     crawledAt: Date.parse(`${crawlDay}T09:00:00Z`),
@@ -475,7 +537,7 @@ function favoritePost() {
     postUrl: 'https://post-1.test/',
     title: 'Post 1',
     summary: 'Summary 1',
-    thumbnail: 'https://post-1.test/thumb.jpg',
+    thumbnail: 'https://source-1.test/thumb.jpg',
     sourceUrl: 'https://source-1.test',
     sourceTitle: 'Source 1',
     publishedAt: Date.parse('2026-06-20T01:00:00Z'),

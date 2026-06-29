@@ -1,19 +1,28 @@
 import { db } from '../lib/db'
+import { mapWithConcurrency } from '../lib/concurrency'
 import { parseMarkup } from '../lib/dom'
 import { discoverFeedUrl, feedProbeUrls, parseFeed, type FeedEntry } from '../lib/feed'
 import { pruneOldPosts } from '../lib/prune'
 import { summarize } from '../lib/summary'
-import { PLACEHOLDER_THUMBNAIL, resolveThumbnail } from '../lib/thumbnail'
-import type { Post, Source } from '../lib/types'
+import {
+  PLACEHOLDER_THUMBNAIL,
+  renderableThumbnail,
+  resolveRenderableThumbnail,
+  resolveThumbnail,
+} from '../lib/thumbnail'
+import type { CrawlRunState, Post, Source } from '../lib/types'
+import { fetchText, SOURCE_TIMEOUT_MS, type FetchTextResult } from './fetch'
 import { ensureSourcePermission } from './permissions'
 
 export const CRAWL_QUEUE_KEY = 'crawlQueue'
 export const CRAWL_IN_PROGRESS_KEY = 'crawlInProgress'
+export const CRAWL_RUN_KEY = 'crawlRun'
+export const CRAWL_CONTINUATION_ALARM = 'crawl-continuation'
+export const MAX_CRAWL_INVOCATION_MS = 4 * 60_000
 
 const MAX_POSTS_PER_SOURCE = 5
-const FETCH_TIMEOUT_MS = 15_000
-const AWS_BLOGS_DEFAULT_THUMBNAIL =
-  'https://a0.awsstatic.com/libra-css/images/site/touch-icon-ipad-144-smile.png'
+const ENRICHMENT_CONCURRENCY = 3
+const CRAWL_CONTINUATION_DELAY_MS = 60_000
 const NON_POST_PATH_PREFIXES = ['/author', '/authors', '/category', '/page', '/tag', '/tags']
 
 export interface CrawlSourceResult {
@@ -26,10 +35,17 @@ export interface CrawlSourceResult {
 
 export interface CrawlAllResult {
   ok: true
+  completed: boolean
+  notificationRequested: boolean
   sourcesCrawled: number
   postsWritten: number
   newPostsWritten: number
   failures: Array<{ sourceId: number; error: string }>
+}
+
+export interface CrawlAllOptions {
+  notificationRequested?: boolean
+  now?: () => number
 }
 
 interface HtmlEntry {
@@ -39,10 +55,15 @@ interface HtmlEntry {
   thumbnail: string
 }
 
-interface FetchTextResult {
-  url: string
-  text: string
+interface PreparedEntries<T> {
+  entries: T[]
+  existingByUrl: Map<string, Post>
 }
+
+type PostWithReusableMetadata = Post & { thumbnail: string }
+
+let activeCrawl: Promise<CrawlAllResult> | undefined
+let activeNotificationRequested = false
 
 /** Crawl one persisted source, upserting at most five newest posts. */
 export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
@@ -53,21 +74,33 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
   const cachedFeedUrl = sameOriginUrl(source.feedUrl, source.url)
 
   try {
+    const sourceSignal = AbortSignal.timeout(SOURCE_TIMEOUT_MS)
     const hasPermission = await ensureSourcePermission(persistedSource.id, persistedSource.url)
     if (!hasPermission) {
-      return { ok: true, sourceId: persistedSource.id, postsWritten: 0, newPostsWritten: 0 }
+      return {
+        ok: false,
+        sourceId: persistedSource.id,
+        postsWritten: 0,
+        newPostsWritten: 0,
+        error: `Permission required for ${persistedSource.url}`,
+      }
     }
 
-    const fetchedPage = cachedFeedUrl ? undefined : await fetchText(persistedSource.url)
-    const feed = await resolveFeed(persistedSource, fetchedPage, cachedFeedUrl)
-    const entries =
+    const fetchedPage = cachedFeedUrl
+      ? undefined
+      : await fetchText(persistedSource.url, sourceSignal)
+    const feed = await resolveFeed(persistedSource, fetchedPage, cachedFeedUrl, sourceSignal)
+    const prepared =
       feed === undefined
-        ? await extractHtmlEntries(fetchedPage ?? (await fetchText(persistedSource.url)))
-        : await enrichFeedEntries(parseFeed(feed.text), persistedSource.url)
+        ? await extractHtmlEntries(
+            fetchedPage ?? (await fetchText(persistedSource.url, sourceSignal)),
+            sourceSignal,
+          )
+        : await enrichFeedEntries(parseFeed(feed.text), persistedSource.url, sourceSignal)
 
     const now = Date.now()
     const crawlDay = localDateKey(new Date(now))
-    const posts = entries.slice(0, MAX_POSTS_PER_SOURCE).map((entry) =>
+    const posts = prepared.entries.slice(0, MAX_POSTS_PER_SOURCE).map((entry) =>
       toPost({
         entry,
         source: persistedSource,
@@ -76,12 +109,7 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
       }),
     )
 
-    let newPostsWritten = 0
-    for (const post of posts) {
-      if (await upsertPost(post)) {
-        newPostsWritten += 1
-      }
-    }
+    const newPostsWritten = await upsertPosts(posts, prepared.existingByUrl)
 
     await markSourceSuccess(persistedSource.id, now, feed?.url)
     return { ok: true, sourceId: persistedSource.id, postsWritten: posts.length, newPostsWritten }
@@ -98,39 +126,72 @@ export async function crawlSource(source: Source): Promise<CrawlSourceResult> {
   }
 }
 
-/** Crawl all saved sources, resuming an existing storage-backed queue if present. */
-export async function crawlAll(): Promise<CrawlAllResult> {
+/** Crawl all saved sources, sharing active work and resuming persisted queues. */
+export function crawlAll(options: CrawlAllOptions = {}): Promise<CrawlAllResult> {
+  activeNotificationRequested ||= options.notificationRequested ?? false
+  if (activeCrawl !== undefined) return activeCrawl
+
+  const promise = runCrawlAll(options).finally(() => {
+    activeCrawl = undefined
+    activeNotificationRequested = false
+  })
+  activeCrawl = promise
+  return promise
+}
+
+async function runCrawlAll(options: CrawlAllOptions): Promise<CrawlAllResult> {
+  const now = options.now ?? Date.now
+  const invocationStartedAt = now()
   await storageSet(CRAWL_IN_PROGRESS_KEY, true)
 
   try {
+    const storedRunState = await storageGet<CrawlRunState>(CRAWL_RUN_KEY)
     let queue = await storageGet<number[]>(CRAWL_QUEUE_KEY)
-    if (queue === undefined || queue.length === 0) {
+    if (storedRunState === undefined && (queue === undefined || queue.length === 0)) {
       const sources = await db.sources.toArray()
       queue = sources.flatMap((source) => (source.id == null ? [] : [source.id]))
-      if (queue.length > 0) {
-        await storageSet(CRAWL_QUEUE_KEY, queue)
-      } else {
-        await storageRemove(CRAWL_QUEUE_KEY)
-      }
     }
+    queue ??= []
 
-    let sourcesCrawled = 0
-    let postsWritten = 0
-    let newPostsWritten = 0
-    const failures: CrawlAllResult['failures'] = []
+    let runState: CrawlRunState = storedRunState ?? {
+      startedAt: invocationStartedAt,
+      notificationRequested: false,
+      sourcesCrawled: 0,
+      postsWritten: 0,
+      newPostsWritten: 0,
+      failures: [],
+    }
+    runState = mergeNotificationRequest(runState)
+    await storageSetItems({
+      [CRAWL_QUEUE_KEY]: queue,
+      [CRAWL_RUN_KEY]: runState,
+    })
 
+    let processedThisInvocation = 0
     while (queue.length > 0) {
+      if (
+        processedThisInvocation > 0 &&
+        now() - invocationStartedAt >= MAX_CRAWL_INVOCATION_MS
+      ) {
+        runState = mergeNotificationRequest(runState)
+        await storageSet(CRAWL_RUN_KEY, runState)
+        chrome.alarms.create(CRAWL_CONTINUATION_ALARM, {
+          when: now() + CRAWL_CONTINUATION_DELAY_MS,
+        })
+        return crawlAllResult(runState, false)
+      }
+
       const sourceId = queue[0]
       if (sourceId === undefined) break
 
       const source = await db.sources.get(sourceId)
       if (source !== undefined) {
         const result = await crawlSource(source)
-        sourcesCrawled += 1
-        postsWritten += result.postsWritten
-        newPostsWritten += result.newPostsWritten
+        runState.sourcesCrawled += 1
+        runState.postsWritten += result.postsWritten
+        runState.newPostsWritten += result.newPostsWritten
         if (!result.ok) {
-          failures.push({
+          runState.failures.push({
             sourceId,
             error: result.error ?? 'Crawl failed',
           })
@@ -138,18 +199,43 @@ export async function crawlAll(): Promise<CrawlAllResult> {
       }
 
       queue = queue.slice(1)
-      if (queue.length > 0) {
-        await storageSet(CRAWL_QUEUE_KEY, queue)
-      } else {
-        await storageRemove(CRAWL_QUEUE_KEY)
-      }
+      processedThisInvocation += 1
+      runState = mergeNotificationRequest(runState)
+      await storageSetItems({
+        [CRAWL_QUEUE_KEY]: queue,
+        [CRAWL_RUN_KEY]: runState,
+      })
     }
 
+    runState = mergeNotificationRequest(runState)
+    await storageSet(CRAWL_RUN_KEY, runState)
     await pruneOldPosts()
-
-    return { ok: true, sourcesCrawled, postsWritten, newPostsWritten, failures }
-  } finally {
     await storageSet(CRAWL_IN_PROGRESS_KEY, false)
+    await storageRemove(CRAWL_QUEUE_KEY)
+    await storageRemove(CRAWL_RUN_KEY)
+
+    return crawlAllResult(runState, true)
+  } catch (error) {
+    await storageSet(CRAWL_IN_PROGRESS_KEY, false)
+    throw error
+  }
+}
+
+function mergeNotificationRequest(runState: CrawlRunState): CrawlRunState {
+  return activeNotificationRequested && !runState.notificationRequested
+    ? { ...runState, notificationRequested: true }
+    : runState
+}
+
+function crawlAllResult(runState: CrawlRunState, completed: boolean): CrawlAllResult {
+  return {
+    ok: true,
+    completed,
+    notificationRequested: runState.notificationRequested,
+    sourcesCrawled: runState.sourcesCrawled,
+    postsWritten: runState.postsWritten,
+    newPostsWritten: runState.newPostsWritten,
+    failures: runState.failures,
   }
 }
 
@@ -175,9 +261,10 @@ async function resolveFeed(
   source: Source,
   fetchedPage: FetchTextResult | undefined,
   cachedFeedUrl: string | undefined,
+  sourceSignal: AbortSignal,
 ): Promise<FetchTextResult | undefined> {
   if (cachedFeedUrl !== undefined) {
-    return fetchText(cachedFeedUrl)
+    return fetchText(cachedFeedUrl, sourceSignal)
   }
 
   if (fetchedPage === undefined) return undefined
@@ -185,27 +272,42 @@ async function resolveFeed(
   const declaredFeedUrl = discoverFeedUrl(fetchedPage.text, source.url)
   const sameOriginDeclaredFeedUrl = sameOriginUrl(declaredFeedUrl, source.url)
   if (sameOriginDeclaredFeedUrl !== undefined) {
-    const feed = await fetchMaybe(sameOriginDeclaredFeedUrl)
+    const feed = await fetchMaybe(sameOriginDeclaredFeedUrl, sourceSignal)
     if (feed !== undefined && parseFeed(feed.text).length > 0) return feed
   }
 
   for (const candidate of feedProbeUrls(source.url)) {
-    const feed = await fetchMaybe(candidate)
+    const feed = await fetchMaybe(candidate, sourceSignal)
     if (feed !== undefined && parseFeed(feed.text).length > 0) return feed
   }
 
   return undefined
 }
 
-async function extractHtmlEntries(fetchedPage: FetchTextResult): Promise<HtmlEntry[]> {
+async function extractHtmlEntries(
+  fetchedPage: FetchTextResult,
+  sourceSignal: AbortSignal,
+): Promise<PreparedEntries<HtmlEntry>> {
   const doc = parseMarkup(fetchedPage.text, 'text/html')
-  const candidates = htmlPostCandidates(doc, fetchedPage.url).slice(0, MAX_POSTS_PER_SOURCE)
-
-  const entries: HtmlEntry[] = []
-  for (const candidate of candidates) {
-    entries.push(await enrichHtmlEntry(candidate))
-  }
-  return entries
+  const htmlCandidates = htmlPostCandidates(doc, fetchedPage.url).slice(0, MAX_POSTS_PER_SOURCE)
+  const existingByUrl = await existingPostsByUrl(
+    htmlCandidates.map((candidate) => candidate.postUrl),
+  )
+  const enrichedHtml = await mapWithConcurrency(
+    htmlCandidates,
+    ENRICHMENT_CONCURRENCY,
+    async (candidate) => {
+      const existing = existingByUrl.get(candidate.postUrl)
+      return hasReusableMetadata(existing)
+        ? {
+            ...candidate,
+            summary: existing.summary,
+            thumbnail: existing.thumbnail,
+          }
+        : enrichHtmlEntry(candidate, sourceSignal)
+    },
+  )
+  return { entries: enrichedHtml, existingByUrl }
 }
 
 function htmlPostCandidates(doc: Document, sourceUrl: string): Array<{ title: string; postUrl: string }> {
@@ -293,20 +395,40 @@ function isLikelyPostUrl(postUrl: string, sourceUrl: string): boolean {
   return !NON_POST_PATH_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 }
 
-async function enrichFeedEntries(entries: FeedEntry[], sourceUrl: string): Promise<FeedEntry[]> {
-  const enriched: FeedEntry[] = []
-  for (const entry of entries) {
-    enriched.push(await enrichFeedEntry(entry, sourceUrl))
-  }
-  return enriched
+async function enrichFeedEntries(
+  entries: FeedEntry[],
+  sourceUrl: string,
+  sourceSignal: AbortSignal,
+): Promise<PreparedEntries<FeedEntry>> {
+  const feedEntries = entries.slice(0, MAX_POSTS_PER_SOURCE)
+  const existingByUrl = await existingPostsByUrl(feedEntries.map((entry) => entry.postUrl))
+  const enrichedFeed = await mapWithConcurrency(
+    feedEntries,
+    ENRICHMENT_CONCURRENCY,
+    async (entry) => {
+      const existing = existingByUrl.get(entry.postUrl)
+      return hasReusableMetadata(existing)
+        ? { ...entry, summary: existing.summary, thumbnail: existing.thumbnail }
+        : enrichFeedEntry(entry, sourceUrl, sourceSignal)
+    },
+  )
+  return { entries: enrichedFeed, existingByUrl }
 }
 
-async function enrichFeedEntry(entry: FeedEntry, sourceUrl: string): Promise<FeedEntry> {
-  if (entry.thumbnail !== PLACEHOLDER_THUMBNAIL) return entry
+async function enrichFeedEntry(
+  entry: FeedEntry,
+  sourceUrl: string,
+  sourceSignal: AbortSignal,
+): Promise<FeedEntry> {
+  const feedThumbnail = renderableThumbnail(entry.thumbnail)
+  if (feedThumbnail !== PLACEHOLDER_THUMBNAIL) {
+    return { ...entry, thumbnail: feedThumbnail }
+  }
+
   const postUrl = sameOriginUrl(entry.postUrl, sourceUrl)
   if (postUrl === undefined) return entry
 
-  const page = await fetchMaybe(postUrl)
+  const page = await fetchMaybe(postUrl, sourceSignal)
   if (page === undefined) return entry
 
   const doc = parseMarkup(page.text, 'text/html')
@@ -314,7 +436,7 @@ async function enrichFeedEntry(entry: FeedEntry, sourceUrl: string): Promise<Fee
   return {
     ...entry,
     postUrl,
-    thumbnail: resolveThumbnail({
+    thumbnail: resolveRenderableThumbnail({
       ...(ogImage !== undefined ? { ogImage } : {}),
       contentHtml: page.text,
       baseUrl: page.url,
@@ -322,8 +444,11 @@ async function enrichFeedEntry(entry: FeedEntry, sourceUrl: string): Promise<Fee
   }
 }
 
-async function enrichHtmlEntry(candidate: { title: string; postUrl: string }): Promise<HtmlEntry> {
-  const page = await fetchMaybe(candidate.postUrl)
+async function enrichHtmlEntry(
+  candidate: { title: string; postUrl: string },
+  sourceSignal: AbortSignal,
+): Promise<HtmlEntry> {
+  const page = await fetchMaybe(candidate.postUrl, sourceSignal)
   if (page === undefined) {
     return {
       ...candidate,
@@ -339,7 +464,7 @@ async function enrichHtmlEntry(candidate: { title: string; postUrl: string }): P
   return {
     ...candidate,
     summary: summarize(summary),
-    thumbnail: resolveThumbnail({
+    thumbnail: resolveRenderableThumbnail({
       ...(ogImage !== undefined ? { ogImage } : {}),
       contentHtml: page.text,
       baseUrl: page.url,
@@ -358,17 +483,12 @@ function toPost({
   crawledAt: number
   crawlDay: string
 }): Post {
-  const thumbnail =
-    entry.thumbnail === PLACEHOLDER_THUMBNAIL
-      ? sourceDefaultThumbnail(source.url) ?? entry.thumbnail
-      : entry.thumbnail
-
   return {
     sourceId: source.id,
     sourceUrl: source.url,
     title: entry.title,
     summary: entry.summary,
-    thumbnail,
+    thumbnail: renderableThumbnail(entry.thumbnail),
     postUrl: entry.postUrl,
     ...('publishedAt' in entry && entry.publishedAt !== undefined
       ? { publishedAt: entry.publishedAt }
@@ -378,51 +498,44 @@ function toPost({
   }
 }
 
-function sourceDefaultThumbnail(sourceUrl: string): string | undefined {
-  try {
-    const url = new URL(sourceUrl)
-    if (url.hostname === 'aws.amazon.com' && url.pathname.startsWith('/blogs')) {
-      return AWS_BLOGS_DEFAULT_THUMBNAIL
-    }
-  } catch {
-    return undefined
-  }
-  return undefined
+async function existingPostsByUrl(postUrls: readonly string[]): Promise<Map<string, Post>> {
+  if (postUrls.length === 0) return new Map()
+  const rows = await db.posts.where('postUrl').anyOf([...postUrls]).toArray()
+  return new Map(rows.map((post) => [post.postUrl, post]))
 }
 
-async function upsertPost(post: Post): Promise<boolean> {
-  const existing = await db.posts.get({ postUrl: post.postUrl })
-  await db.posts.put({
-    ...post,
-    ...(existing?.id !== undefined ? { id: existing.id } : {}),
+function hasReusableMetadata(post: Post | undefined): post is PostWithReusableMetadata {
+  return (
+    post !== undefined &&
+    post.summary.trim().length > 0 &&
+    post.thumbnail !== undefined &&
+    post.thumbnail !== PLACEHOLDER_THUMBNAIL
+  )
+}
+
+async function upsertPosts(
+  posts: readonly Post[],
+  existingByUrl: ReadonlyMap<string, Post>,
+): Promise<number> {
+  const rows = posts.map((post) => {
+    const existing = existingByUrl.get(post.postUrl)
+    return existing?.id === undefined ? post : { ...post, id: existing.id }
   })
-  return existing === undefined
+
+  await db.transaction('rw', db.posts, async () => {
+    await db.posts.bulkPut(rows)
+  })
+  return posts.filter((post) => !existingByUrl.has(post.postUrl)).length
 }
 
-async function fetchText(url: string): Promise<FetchTextResult> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
+async function fetchMaybe(
+  url: string,
+  sourceSignal: AbortSignal,
+): Promise<FetchTextResult | undefined> {
   try {
-    const response = await fetch(url, { signal: controller.signal })
-    if (!response.ok) {
-      throw new Error(`Fetch failed for ${url}: HTTP ${response.status}`)
-    }
-    return { url, text: await response.text() }
+    return await fetchText(url, sourceSignal)
   } catch (error) {
-    if (controller.signal.aborted) {
-      throw new Error(`Fetch timed out after 15 seconds for ${url}`, { cause: error })
-    }
-    throw error
-  } finally {
-    clearTimeout(timeoutId)
-  }
-}
-
-async function fetchMaybe(url: string): Promise<FetchTextResult | undefined> {
-  try {
-    return await fetchText(url)
-  } catch {
+    if (sourceSignal.aborted) throw error
     return undefined
   }
 }
@@ -480,6 +593,12 @@ function storageGet<T>(key: string): Promise<T | undefined> {
 function storageSet(key: string, value: unknown): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.set({ [key]: value }, resolve)
+  })
+}
+
+function storageSetItems(items: Record<string, unknown>): Promise<void> {
+  return new Promise((resolve) => {
+    chrome.storage.local.set(items, resolve)
   })
 }
 

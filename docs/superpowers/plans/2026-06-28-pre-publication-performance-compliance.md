@@ -4,7 +4,7 @@
 
 **Goal:** Make dev-corner v0.1.0 measurably performant, resilient under Manifest V3 service-worker limits, and internally consistent with Chrome Web Store policy before executing the publication plan.
 
-**Architecture:** Preserve the existing popup/service-worker/IndexedDB boundaries. Add bounded network and crawl orchestration primitives in `src/background/`, keep reusable policies pure in `src/lib/`, enforce a saved-origin thumbnail boundary in both ingestion and rendering, and make a checked package/compliance report the prerequisite for publication.
+**Architecture:** Preserve the existing popup/service-worker/IndexedDB boundaries. Add bounded network and crawl orchestration primitives in `src/background/`, keep reusable policies pure in `src/lib/`, enforce an HTTPS-only source-selected thumbnail boundary in both ingestion and rendering, and make a checked package/compliance report the prerequisite for publication.
 
 **Tech Stack:** Chrome Manifest V3, TypeScript 6 strict mode, React 19, Dexie 4, Vite 8, Vitest 4, Node.js 24, pnpm 11.
 
@@ -17,6 +17,16 @@
 - Execute tasks inline in numeric order. Do not dispatch implementation work to subagents.
 - A task may not be marked complete until its listed verification commands pass, its task-scoped commit exists, and its user checkpoint has been sent.
 - Use test-driven development for every behavior change: add the focused failing test, observe the expected failure, implement the smallest complete change, then run focused and full regression checks.
+
+### Approved thumbnail-policy amendment
+
+The original exact-origin Task 4 policy was superseded after local testing showed
+that DEV and DevOpsCube use `media2.dev.to` and `storage.ghost.io`. Corrective
+commits `68a7460`, `3f84a3e`, and `51873cc` now permit any valid HTTPS thumbnail
+URL explicitly selected by saved-source feed or page content. HTTP, `data:`,
+executable, and malformed URLs still use the packaged placeholder. Task 8
+disclosures and Task 9 evidence must include source-selected third-party image
+hosts and their receipt of ordinary request metadata.
 
 ## Mandatory Inline Execution Protocol
 
@@ -463,7 +473,7 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
 
   Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 3, “Declare the minimum current-tab permission and explicit CSP,” is complete. Report the commit, changed files, manifest/build/package verification, permission/CSP impact, and any blockers/deviations. State that execution is waiting for approval to start Task 4. Do not begin Task 4 in the same turn.
 
-### Task 4: Enforce the saved-origin thumbnail boundary
+### Task 4: Enforce the safe thumbnail URL boundary
 
 **Files:**
 - Modify: `src/lib/thumbnail.ts`
@@ -476,7 +486,7 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
 - Modify: `tests/popup/App.test.tsx`
 - Modify: `tests/integration/crawl.test.ts`
 
-**Policy:** A post thumbnail is either `/placeholder.svg` or an HTTPS URL whose origin exactly equals the saved source origin. Existing off-origin values are rejected at render time, so no schema migration is needed.
+**Policy:** A post thumbnail is either `/placeholder.svg` or a valid HTTPS URL explicitly selected by saved-source feed or page content. HTTP, `data:`, executable, and malformed values are rejected at render time, so no schema migration is needed.
 
 - [ ] **Step 1: Write failing thumbnail-policy tests**
 
@@ -484,30 +494,28 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
 
   ```ts
   describe('renderableThumbnail', () => {
-    it('allows HTTPS images from the saved source origin', () => {
-      expect(
-        renderableThumbnail('https://blog.test/images/post.webp', 'https://blog.test/feed'),
-      ).toBe('https://blog.test/images/post.webp')
+    it('allows HTTPS images selected by the saved source', () => {
+      expect(renderableThumbnail('https://cdn.test/images/post.webp')).toBe(
+        'https://cdn.test/images/post.webp',
+      )
     })
 
     it.each([
-      'https://cdn.test/post.webp',
       'http://blog.test/post.webp',
       'data:image/png;base64,AAAA',
       'javascript:alert(1)',
+      'not a URL',
     ])('replaces disallowed thumbnail %s', (thumbnail) => {
-      expect(renderableThumbnail(thumbnail, 'https://blog.test')).toBe(PLACEHOLDER_THUMBNAIL)
+      expect(renderableThumbnail(thumbnail)).toBe(PLACEHOLDER_THUMBNAIL)
     })
 
     it('keeps the packaged placeholder', () => {
-      expect(renderableThumbnail(PLACEHOLDER_THUMBNAIL, 'https://blog.test')).toBe(
-        PLACEHOLDER_THUMBNAIL,
-      )
+      expect(renderableThumbnail(PLACEHOLDER_THUMBNAIL)).toBe(PLACEHOLDER_THUMBNAIL)
     })
   })
   ```
 
-  Add component tests asserting same-origin images have `loading="lazy"` and `decoding="async"`, while an off-origin thumbnail renders `/placeholder.svg` and never renders the remote URL.
+  Add component tests asserting source-selected HTTPS images, including third-party CDN URLs, have `loading="lazy"` and `decoding="async"`, while an insecure thumbnail renders `/placeholder.svg` and never renders the remote URL.
 
 - [ ] **Step 2: Run focused tests to verify failure**
 
@@ -517,7 +525,7 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   pnpm test tests/lib/thumbnail.test.ts tests/popup/components.test.tsx
   ```
 
-  Expected: `renderableThumbnail` is missing and `PostCard` lacks source-origin enforcement and loading attributes.
+  Expected: `renderableThumbnail` is missing and `PostCard` lacks HTTPS enforcement and loading attributes.
 
 - [ ] **Step 3: Implement the pure thumbnail policy**
 
@@ -526,7 +534,6 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   ```ts
   export function renderableThumbnail(
     thumbnail: string | undefined,
-    sourceUrl: string,
   ): string {
     if (thumbnail === undefined || thumbnail === PLACEHOLDER_THUMBNAIL) {
       return PLACEHOLDER_THUMBNAIL
@@ -534,10 +541,7 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
 
     try {
       const candidate = new URL(thumbnail)
-      const source = new URL(sourceUrl)
-      return candidate.protocol === 'https:' && candidate.origin === source.origin
-        ? candidate.href
-        : PLACEHOLDER_THUMBNAIL
+      return candidate.protocol === 'https:' ? candidate.href : PLACEHOLDER_THUMBNAIL
     } catch {
       return PLACEHOLDER_THUMBNAIL
     }
@@ -553,10 +557,10 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   - In `toPost()`, set:
 
   ```ts
-  thumbnail: renderableThumbnail(entry.thumbnail, source.url),
+  thumbnail: renderableThumbnail(entry.thumbnail),
   ```
 
-  Update the AWS integration test to expect `/placeholder.svg`. Add an integration case where feed media points at `https://cdn.test/image.jpg` and assert the stored thumbnail is `/placeholder.svg`.
+  Update the AWS integration test to expect `/placeholder.svg` when no image is present. Add integration cases where feed or Open Graph media points at `https://cdn.test/image.jpg` or `https://storage.ghost.io/...` and assert the HTTPS URL is stored.
 
 - [ ] **Step 5: Guard rendering of legacy rows**
 
@@ -566,7 +570,7 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
 
   ```tsx
   const [imageFailed, setImageFailed] = useState(false)
-  const thumbnail = renderableThumbnail(post.thumbnail, post.sourceUrl)
+  const thumbnail = renderableThumbnail(post.thumbnail)
   const showImage = !imageFailed
 
   {showImage ? (
@@ -586,7 +590,7 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   )}
   ```
 
-  Update every `PostCardData` fixture to include the matching `sourceUrl`. Change popup digest fixtures so same-origin thumbnail URLs use `https://source-${id}.test/thumb.jpg`.
+  Update every `PostCardData` fixture to include the matching `sourceUrl`. Use representative HTTPS thumbnail URLs such as `https://source-${id}.test/thumb.jpg` and a third-party CDN case.
 
 - [ ] **Step 6: Verify thumbnail behavior and regressions**
 
@@ -597,7 +601,7 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
   pnpm test
   ```
 
-  Expected: focused and full suites pass; no assertion expects an off-origin remote image.
+  Expected: focused and full suites pass; HTTPS third-party images are permitted and insecure/executable URLs remain blocked.
 
 - [ ] **Step 7: Commit**
 
@@ -608,7 +612,7 @@ Hard release budgets are defined in the approved design. Do not weaken them whil
 
 - [ ] **Step 8: Send the Task 4 completion checkpoint and stop**
 
-  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 4, “Enforce the saved-origin thumbnail boundary,” is complete. Report the commit, changed files, focused/full test results, remote-resource/privacy/performance impact, and any blockers/deviations. State that execution is waiting for approval to start Task 5. Do not begin Task 5 in the same turn.
+  Run `git show --stat --oneline --summary HEAD`. Inform Huy that Task 4, “Enforce the safe thumbnail URL boundary,” is complete. Report the commit, changed files, focused/full test results, remote-resource/privacy/performance impact, and any blockers/deviations. State that execution is waiting for approval to start Task 5. Do not begin Task 5 in the same turn.
 
 ### Task 5: Bound network bodies, redirects, requests, and source duration
 
@@ -1164,7 +1168,7 @@ interface CrawlRunState {
   | Data | Trigger | Local storage | Network recipient | Retention/deletion |
   |---|---|---|---|---|
   | Source URL/title | Explicit subscribe | IndexedDB sources | Selected source origin | Removed on unsubscribe |
-  | Post metadata | Crawl selected source | IndexedDB posts | Selected source origin only | Seven crawl days or unsubscribe |
+  | Post metadata | Crawl selected source | IndexedDB posts | Selected source origin; source-selected HTTPS thumbnail host | Seven crawl days or unsubscribe |
   | Favorite snapshot | Explicit favorite action | IndexedDB favoritePosts | None | Explicit unfavorite or uninstall |
   | Settings | Toggle action/defaults | chrome.storage.local | None | Setting update or uninstall |
   | Crawl state/errors | Crawl execution | chrome.storage.local/IndexedDB | None | Completion, retry, source removal, or uninstall |
@@ -1174,6 +1178,7 @@ interface CrawlRunState {
   - Single purpose: use the statement above.
   - Remote code: No. Remote markup and images are data and are never executed.
   - Website content: disclose because titles, summaries, links, and permitted thumbnail URLs are extracted.
+  - Source-selected HTTPS thumbnail hosts receive ordinary image-request metadata and may be third-party CDNs.
   - Web history: disclose conservatively because the extension stores URLs the user explicitly saves; it does not monitor general browsing history.
   - Personally identifiable, health, financial, authentication, personal communications, location, and general user-activity monitoring: not collected.
   - Data is not sold, used for ads, transferred to the developer, used for creditworthiness, or read by humans.
@@ -1220,8 +1225,8 @@ interface CrawlRunState {
       <p>This information is stored in extension IndexedDB and <code>chrome.storage.local</code>. It is not transmitted to the developer or a developer-controlled service.</p>
 
       <h2>Network requests</h2>
-      <p>Dev Corner makes direct requests only to source origins you explicitly save and grant through Chrome's per-origin permission prompt. These requests discover and read RSS, Atom, or HTML content and may load an HTTPS thumbnail from the same saved origin. Thumbnail URLs on unrelated origins are not requested by the extension.</p>
-      <p>The selected source operator receives ordinary network information, such as your IP address, user agent, requested URL, and request time. Dev Corner does not add an account identifier or tracking identifier.</p>
+      <p>Dev Corner requests RSS, Atom, and HTML content only from source origins you explicitly save and grant through Chrome's per-origin permission prompt. It may also load an HTTPS thumbnail URL explicitly provided by a saved source. Because publishers commonly use external image hosting, that thumbnail may load from a third-party CDN or image host.</p>
+      <p>The selected source operator and any source-selected thumbnail host receive ordinary network information, such as your IP address, user agent, requested URL, and request time. Dev Corner does not add an account identifier or tracking identifier.</p>
       <p>If you explicitly save and grant an HTTP-only source, that connection is not encrypted. Dev Corner never downgrades an HTTPS source to HTTP.</p>
 
       <h2>Permissions</h2>
@@ -1270,7 +1275,7 @@ interface CrawlRunState {
 
   An optional 07:00 local crawl keeps the digest current. Daily desktop notifications are off by default and can be enabled from Sources.
 
-  Dev Corner has no account, backend, analytics, advertising, or telemetry. Direct network requests go only to source origins you save and grant.
+  Dev Corner has no account, backend, analytics, advertising, or telemetry. Content requests go only to source origins you save and grant; HTTPS thumbnails may load from image hosts explicitly selected by those sources.
 
   ## Permission justifications
 
@@ -1279,7 +1284,7 @@ interface CrawlRunState {
   - alarms: Schedules the optional daily crawl and resumes a bounded crawl queue without persistent worker timers.
   - contextMenus: Adds “Save to Dev Corner” for an explicitly selected page or link.
   - notifications: Sends an optional completed-digest alert. Notifications are off by default.
-  - optional host permissions: Fetches RSS, Atom, HTML, and permitted same-origin thumbnails only from origins the user explicitly subscribes to and grants.
+  - optional host permissions: Fetches RSS, Atom, and HTML only from origins the user explicitly subscribes to and grants. Thumbnail rendering separately accepts HTTPS image URLs explicitly provided by those sources, including third-party CDNs.
 
   ## Dashboard data disclosure
 
@@ -1307,7 +1312,7 @@ interface CrawlRunState {
   7. Return to Sources and unsubscribe. Normal posts for that source disappear; the independent favorite remains.
   8. Confirm Daily notifications is disabled on a fresh install and can be enabled explicitly in Sources.
 
-  Network access is limited to origins explicitly saved and granted by the reviewer. No remote code, backend, analytics, or telemetry is used.
+  RSS, Atom, and HTML requests are limited to origins explicitly saved and granted by the reviewer. Source-selected HTTPS thumbnails may load from third-party image hosts. No remote code, backend, analytics, or telemetry is used.
   ```
 
 - [ ] **Step 6: Gate the existing publication plan**
@@ -1404,6 +1409,7 @@ interface CrawlRunState {
   - Continuation after simulated worker termination.
   - Notification disabled by default, explicit opt-in, and exactly one final-batch notification.
   - Source deletion removes normal posts and retains favorites.
+  - Source-selected same-host, subdomain, and third-party CDN thumbnails render; HTTP, `data:`, executable, and malformed thumbnail URLs use the packaged fallback.
   - No popup, service-worker, or extension-page console errors.
 
 - [ ] **Step 4: Measure popup and storage budgets**
@@ -1469,7 +1475,7 @@ The plan is complete only when all of the following are true:
 - Cached complete posts are not repeatedly enriched.
 - Removed sources leave no normal posts or unused origin grant; favorites remain.
 - Notifications are off by default.
-- Off-origin and insecure thumbnails cannot be requested by the popup.
+- Popup thumbnails are limited to valid HTTPS URLs explicitly selected by saved-source content; HTTP, `data:`, executable, and malformed URLs are blocked.
 - Manifest permissions and CSP match production behavior.
 - No remote or dynamically evaluated code exists in the built ZIP.
 - Privacy policy, compliance matrix, dashboard guidance, listing copy, reviewer instructions, and runtime behavior agree.
@@ -1487,7 +1493,7 @@ The plan is complete only when all of the following are true:
 | Popup/package performance evidence | Tasks 1 and 9 |
 | Local data lifecycle and permission cleanup | Task 2 |
 | Minimum permissions and CSP | Task 3 |
-| Saved-origin thumbnail policy | Task 4 |
+| Source-selected HTTPS thumbnail policy | Task 4 plus approved corrective commits |
 | Request/body/source bounds | Task 5 |
 | Bounded enrichment and batched writes | Task 6 |
 | Single-flight and continuation alarms | Task 7 |
@@ -1505,4 +1511,5 @@ The plan is complete only when all of the following are true:
 - New cross-context fields extend `WorkerResponse` in `src/lib/types.ts`.
 - Post writes remain idempotent through the unique `postUrl` index and ID-preserving `bulkPut`.
 - No task adds required host access.
+- Page/feed fetches remain limited to granted source origins; source-selected HTTPS thumbnails may load from third-party image hosts.
 - Every new pure helper has a focused unit test.

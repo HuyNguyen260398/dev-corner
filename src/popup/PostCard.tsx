@@ -1,8 +1,12 @@
+import { useState } from 'react'
+import { PLACEHOLDER_THUMBNAIL, renderableThumbnail } from '../lib/thumbnail-policy'
+
 export interface PostCardData {
   postUrl: string
   title: string
   summary: string
   thumbnail?: string
+  sourceUrl: string
   sourceTitle: string
   timestamp: number
 }
@@ -22,10 +26,22 @@ export function PostCard({
   featured = false,
   onToggleFavorite,
 }: PostCardProps) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const thumbnail = renderableThumbnail(post.thumbnail)
+  const showImage = !imageFailed
+
   return (
     <article className={featured ? 'post-card featured-post' : 'post-card'}>
-      {post.thumbnail ? (
-        <img src={post.thumbnail} alt={`${post.title} thumbnail`} width="72" height="72" />
+      {showImage ? (
+        <img
+          src={thumbnail}
+          alt={thumbnail === PLACEHOLDER_THUMBNAIL ? '' : `${post.title} thumbnail`}
+          width="72"
+          height="72"
+          loading="lazy"
+          decoding="async"
+          onError={() => setImageFailed(true)}
+        />
       ) : (
         <div className="thumbnail-fallback" aria-hidden="true">
           {sourceInitial(post.sourceTitle)}

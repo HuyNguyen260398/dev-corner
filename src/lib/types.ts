@@ -65,6 +65,15 @@ export interface Settings {
   enableDailyNotifications: boolean
 }
 
+export interface CrawlRunState {
+  startedAt: number
+  notificationRequested: boolean
+  sourcesCrawled: number
+  postsWritten: number
+  newPostsWritten: number
+  failures: Array<{ sourceId: number; error: string }>
+}
+
 /** Requests sent from the popup / context menu to the service worker. */
 export type WorkerRequest =
   | { type: 'CRAWL_ALL' }
@@ -90,6 +99,7 @@ export type WorkerResponse =
       failures?: Array<{ sourceId: number; error: string }>
       settings?: Settings
       crawlInProgress?: boolean
+      crawlCompleted?: boolean
       permissionGranted?: boolean
     }
   | { ok: false; error: string }

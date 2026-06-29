@@ -35,8 +35,9 @@ in `docs/adr/` explain the extraction and permissions decisions.
   unions in `src/lib/types.ts`. Add new message types there, don't inline ad-hoc shapes.
 - **Idempotent crawls.** `postUrl` is a unique index; upsert so re-crawls don't
   duplicate posts.
-- **Privacy.** The only network calls allowed are fetches to user-saved sources.
-  No analytics, telemetry, or third-party calls.
+- **Privacy.** Page and feed fetches only target user-saved source origins.
+  Thumbnails may load from HTTPS URLs explicitly selected by those sources. No
+  analytics or telemetry.
 
 ## The selection algorithm
 

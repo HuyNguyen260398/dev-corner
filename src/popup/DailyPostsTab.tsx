@@ -111,6 +111,7 @@ function DigestPreview({
                   title: post.title,
                   summary: post.summary,
                   ...(post.thumbnail !== undefined ? { thumbnail: post.thumbnail } : {}),
+                  sourceUrl: post.sourceUrl,
                   sourceTitle: source?.title ?? hostLabel(post.sourceUrl),
                   timestamp: post.publishedAt ?? post.crawledAt,
                 }}

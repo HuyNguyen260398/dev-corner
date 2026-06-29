@@ -12,6 +12,26 @@ type ReleaseIconManifest = {
 }
 
 describe('manifest release assets', () => {
+  it('declares only exercised API permissions and an explicit MV3 CSP', async () => {
+    const resolvedManifest = (await manifest) as {
+      minimum_chrome_version?: string
+      permissions?: string[]
+      content_security_policy?: { extension_pages?: string }
+    }
+
+    expect(resolvedManifest.minimum_chrome_version).toBe('103')
+    expect(resolvedManifest.permissions).toEqual([
+      'activeTab',
+      'storage',
+      'alarms',
+      'contextMenus',
+      'notifications',
+    ])
+    expect(resolvedManifest.content_security_policy?.extension_pages).toBe(
+      "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; connect-src https: http:; img-src 'self' data: https:",
+    )
+  })
+
   it('uses optional per-origin host permissions for Web Store least privilege', async () => {
     const resolvedManifest = (await manifest) as {
       host_permissions?: string[]

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dev Corner — Privacy Policy</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; color: #172033; }
+      h1 { font-size: 1.6rem; }
+      h2 { margin-top: 2rem; font-size: 1.15rem; }
+      code { overflow-wrap: anywhere; }
+    </style>
+  </head>
+  <body>
+    <h1>Dev Corner — Privacy Policy</h1>
+    <p><strong>Effective date:</strong> 2026-06-28</p>
+
+    <h2>Summary</h2>
+    <p>Dev Corner builds a reading digest from blog sources you explicitly save. Your subscriptions, extracted post metadata, favorites, settings, and crawl state are stored locally in your browser. Dev Corner has no account, backend, analytics, advertising, or telemetry, and the developer does not receive or read this data.</p>
+
+    <h2>Data handled locally</h2>
+    <ul>
+      <li>Source URLs and titles you choose to subscribe to.</li>
+      <li>Post URLs, titles, summaries, publication times, and permitted thumbnail URLs extracted from those sources.</li>
+      <li>Favorite-post snapshots you explicitly create.</li>
+      <li>Daily crawl and notification preferences.</li>
+      <li>Crawl queue, timestamps, and source-specific error messages needed for reliable local operation.</li>
+    </ul>
+    <p>This information is stored in extension IndexedDB and <code>chrome.storage.local</code>. It is not transmitted to the developer or a developer-controlled service.</p>
+
+    <h2>Network requests</h2>
+    <p>Dev Corner requests RSS, Atom, and HTML content only from source origins you explicitly save and grant through Chrome's per-origin permission prompt. It may also load an HTTPS thumbnail URL explicitly provided by a saved source. Because publishers commonly use external image hosting, that thumbnail may load from a third-party CDN or image host.</p>
+    <p>The selected source operator and any source-selected thumbnail host receive ordinary network information, such as your IP address, user agent, requested URL, and request time. Dev Corner does not add an account identifier or tracking identifier.</p>
+    <p>If you explicitly save and grant an HTTP-only source, that connection is not encrypted. Dev Corner never downgrades an HTTPS source to HTTP.</p>
+
+    <h2>Permissions</h2>
+    <ul>
+      <li><strong>activeTab</strong> — temporarily reads the current page URL and title after you invoke Dev Corner, so you can subscribe to that page. It does not monitor general browsing.</li>
+      <li><strong>storage</strong> — persists local settings and resumable crawl state.</li>
+      <li><strong>alarms</strong> — schedules the optional daily crawl and resumes bounded crawl work without persistent timers.</li>
+      <li><strong>contextMenus</strong> — adds “Save to Dev Corner” for a page or link you explicitly select.</li>
+      <li><strong>notifications</strong> — sends an optional completed-digest alert. Notifications are off by default.</li>
+      <li><strong>optional host permissions</strong> — grants access only to source origins you explicitly subscribe to and approve.</li>
+    </ul>
+
+    <h2>Retention and deletion</h2>
+    <p>Normal post metadata is retained for the latest seven crawl days. Unsubscribing from a source removes that source, its normal posts, and its origin grant when no other source uses the origin. Favorite posts are independent snapshots and remain until you remove them. Uninstalling Dev Corner removes its local extension storage.</p>
+
+    <h2>Sharing and prohibited uses</h2>
+    <p>Dev Corner does not sell, share, or transfer locally stored data to advertisers, data brokers, or other third parties. It does not use data for personalized advertising, lending, creditworthiness, or unrelated purposes, and no human is allowed to read it.</p>
+    <p>Dev Corner's use of information received from Chrome APIs adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements.</p>
+
+    <h2>Contact</h2>
+    <p>Questions may be sent to <a href="mailto:huynguyen260398@gmail.com">huynguyen260398@gmail.com</a>.</p>
+  </body>
+</html>

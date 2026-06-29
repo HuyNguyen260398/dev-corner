@@ -1,6 +1,9 @@
 # dependencies
 node_modules/
 
+# repository-local package-manager cache
+.pnpm-store/
+
 # build output
 dist/
 
