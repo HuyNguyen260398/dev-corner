@@ -44,7 +44,7 @@ No later publication task is authorized until all four checks pass.
 - [ ] Compare the privacy policy against the compliance matrix and current package behavior.
 - [ ] Confirm it discloses local source/post/favorite/settings/crawl data, direct content requests to saved origins, source-selected third-party HTTPS thumbnail hosts, HTTP risk, retention/deletion, and Limited Use.
 - [ ] Enable GitHub Pages from the repository `main` branch and `/docs` folder if it is not already enabled.
-- [ ] Open `https://huyng260398.github.io/dev-corner/privacy-policy.html` in a private window.
+- [ ] Open `https://huynguyen260398.github.io/dev-corner/privacy-policy.html` in a private window.
 - [ ] Confirm the page is public, current, readable, and matches the committed file.
 
 Do not edit policy substance during deployment. Any inconsistency returns to the owning pre-publication task.
@@ -71,6 +71,7 @@ Do not edit policy substance during deployment. Any inconsistency returns to the
 - `~/Desktop/screenshot-1-digest.png`
 - `~/Desktop/screenshot-2-sources.png`
 - `~/Desktop/screenshot-3-favorites.png`
+- `~/Desktop/promo-small-440x280.png`
 
 - [ ] Load the verified `dist/` package as an unpacked extension in a dedicated Chrome profile.
 - [ ] Save and grant two or three HTTPS developer-blog sources, then refresh.
@@ -79,6 +80,7 @@ Do not edit policy substance during deployment. Any inconsistency returns to the
 - [ ] Favorite one available post and capture Favorite Posts.
 - [ ] Export every screenshot at 1280×800 px or 640×400 px, PNG or JPEG, no more than 2 MB.
 - [ ] Review screenshots for private browsing data, unrelated tabs, debug UI, and misleading content before upload.
+- [ ] Create a 440×280 px small promotional PNG that uses Dev Corner branding, fills the canvas, remains legible when downscaled, and does not make unsupported claims.
 
 ---
 
@@ -116,7 +118,7 @@ Do not edit policy substance during deployment. Any inconsistency returns to the
 - [ ] Create a new public item and upload `extension-v0.1.0.zip`.
 - [ ] Confirm the dashboard reads version `0.1.0` and reports no package errors.
 - [ ] Copy the name, short description, detailed description, and single-purpose statement from `docs/store-listing.md`.
-- [ ] Upload `public/icons/icon-128.png` and the reviewed screenshots.
+- [ ] Upload `public/icons/icon-128.png`, the reviewed screenshots, and `promo-small-440x280.png`.
 - [ ] Enter the verified public privacy-policy URL.
 - [ ] Enter the reviewer instructions from `docs/chrome-web-store-reviewer-instructions.md`.
 

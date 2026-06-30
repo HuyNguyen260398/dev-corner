@@ -6,7 +6,7 @@
 
 **Architecture:** Run the verified production extension in an isolated Chrome profile, populate it from three live public developer blogs, and capture literal 1280×800 browser-context screenshots. Generate the promotional tile separately from the approved product-preview design, then validate dimensions, file sizes, visual accuracy, and privacy before recording evidence in the publication readiness document.
 
-**Tech Stack:** Chrome 149, Manifest V3 unpacked extension, macOS `screencapture`, `sips`, ImageGen, Node.js 24, pnpm 11.5.2.
+**Tech Stack:** Chrome for Testing 149.0.7827.197, Manifest V3 unpacked extension, macOS `screencapture`, `sips`, ImageGen, Node.js 24, pnpm 11.5.2.
 
 ---
 
@@ -25,7 +25,8 @@
 
 **Files:**
 - Reuse: `dist/`
-- Create locally: `/tmp/dev-corner-store-profile/`
+- Create locally: `/tmp/dev-corner-store-profile-cft/`
+- Create locally: `/tmp/chrome-for-testing-149/`
 
 - [ ] **Step 1: Re-run the exact package gate with pinned tools**
 
@@ -37,13 +38,33 @@ PATH=/tmp/dev-corner-corepack:/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/u
 
 Expected: typecheck, lint, 17 test files with 163 tests, production build, and package verification all pass; total unpacked size is 512,071 bytes.
 
-- [ ] **Step 2: Start a dedicated Chrome profile with only the production extension**
+- [ ] **Step 2: Prepare matching Chrome for Testing**
 
-Close any previously launched store-capture Chrome instance. Run:
+Official branded Chrome builds removed support for `--load-extension` starting in Chrome 137. Download the matching Chrome for Testing build, which retains this development capability:
 
 ```bash
-open -na "Google Chrome" --args \
-  --user-data-dir=/tmp/dev-corner-store-profile \
+curl -L --fail \
+  --output /tmp/chrome-for-testing-149.zip \
+  https://storage.googleapis.com/chrome-for-testing-public/149.0.7827.197/mac-arm64/chrome-mac-arm64.zip
+mkdir -p /tmp/chrome-for-testing-149
+unzip -q /tmp/chrome-for-testing-149.zip -d /tmp/chrome-for-testing-149
+```
+
+Run:
+
+```bash
+"/tmp/chrome-for-testing-149/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" --version
+```
+
+Expected: `Google Chrome for Testing 149.0.7827.197`.
+
+- [ ] **Step 3: Start a dedicated browser profile with only the production extension**
+
+Close any previously launched store-capture instance. Run this command directly in an interactive terminal so the browser process remains available:
+
+```bash
+"/tmp/chrome-for-testing-149/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" \
+  --user-data-dir=/tmp/dev-corner-store-profile-cft \
   --load-extension=/Users/huyng/ws/dev-corner/dist \
   --disable-extensions-except=/Users/huyng/ws/dev-corner/dist \
   --no-first-run \
@@ -52,9 +73,9 @@ open -na "Google Chrome" --args \
   https://kubernetes.io/blog/
 ```
 
-Expected: a new unsigned Chrome profile opens the public Kubernetes Blog with Dev Corner as its only unpacked extension.
+Expected: a new unsigned Chrome for Testing profile opens the public Kubernetes Blog with Dev Corner as its only unpacked extension.
 
-- [ ] **Step 3: Normalize the browser window for capture**
+- [ ] **Step 4: Normalize the browser window for capture**
 
 Dismiss first-run notices without signing in. Pin Dev Corner through the Extensions menu. Hide the bookmarks bar and close every tab except the current public developer-blog tab. Run:
 
@@ -64,7 +85,7 @@ osascript -e 'tell application "Google Chrome" to set bounds of front window to 
 
 Expected: the front Chrome window occupies a consistent 1280×800 capture region beginning below the macOS menu bar.
 
-- [ ] **Step 4: Subscribe to the approved live sources**
+- [ ] **Step 5: Subscribe to the approved live sources**
 
 Use the popup's Sources tab to subscribe to these HTTPS pages, approving each per-origin Chrome prompt:
 
@@ -76,7 +97,7 @@ https://devopscube.com/
 
 Expected: all three sources appear in Sources without `Needs permission`.
 
-- [ ] **Step 5: Crawl and inspect the live digest**
+- [ ] **Step 6: Crawl and inspect the live digest**
 
 Click **Refresh digest** and wait for completion. Confirm:
 
@@ -261,4 +282,3 @@ git commit -m "docs: resolve Chrome Web Store publication blockers"
 ```
 
 Expected: the commit contains only publication evidence and plan corrections.
-

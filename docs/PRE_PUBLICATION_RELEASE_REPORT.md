@@ -4,13 +4,13 @@
 
 | Field | Value |
 |---|---|
-| Date | 2026-06-29 (Asia/Ho_Chi_Minh, UTC+07) |
+| Date | 2026-06-30 (Asia/Ho_Chi_Minh, UTC+07) |
 | OS | macOS 26.5.1 (Build 25F80), arm64 |
 | Chrome | 149.0.7827.197 |
 | Node.js used for release gate | 24.18.0 |
 | pnpm | 11.5.2 |
-| Commit | `dbf8dee0635bb26026b2cae1255fc60e11d66a3d` |
-| Branch | `codex/pre-publication-performance-implementation` |
+| Package source commit | `d19ce163601e5f56647c110c32b9ab8e6c159070` |
+| Release branch | `codex/chrome-webstore-publication-readiness` |
 | Extension version | 0.1.0 |
 
 ## Automated release gate
@@ -19,11 +19,11 @@ All commands ran against the commit above with the production package built from
 
 | Command | Result | Duration/evidence |
 |---|---|---|
-| `pnpm verify:release` | Pass | 4.70 seconds total |
+| `pnpm verify:release` | Pass | 6.39 seconds total |
 | TypeScript strict check | Pass | `tsc --noEmit`, zero errors |
 | ESLint | Pass | zero errors |
-| Vitest | Pass | 17 files, 163 tests, 1.64 seconds |
-| Production build | Pass | 243 modules, 83 milliseconds |
+| Vitest | Pass | 17 files, 163 tests, 1.97 seconds |
+| Production build | Pass | 243 modules, 90 milliseconds |
 | `pnpm verify:package` | Pass | 512,071 total bytes; MV3, permission, executable-code, and size gates passed |
 | `pnpm audit --prod --audit-level high` | Pass | No known vulnerabilities, 0.50 seconds |
 
@@ -31,9 +31,9 @@ All commands ran against the commit above with the production package built from
 
 | JavaScript file | Raw bytes | Gzip bytes | 80 KiB gzip budget |
 |---|---:|---:|---|
-| `assets/index.html-B_-DMQF2.js` | 206,701 | 63,870 | Pass |
-| `assets/index.ts-CiQcQa8p.js` | 192,775 | 66,301 | Pass |
-| `assets/sources-O4m80wH6.js` | 99,408 | 32,641 | Pass |
+| `assets/index.html-B_-DMQF2.js` | 206,701 | 63,854 | Pass |
+| `assets/index.ts-CiQcQa8p.js` | 192,775 | 66,121 | Pass |
+| `assets/sources-O4m80wH6.js` | 99,408 | 32,673 | Pass |
 | `service-worker-loader.js` | 40 | 60 | Pass |
 
 Total unpacked package size is 512,071 bytes, below the 750 KiB budget. The verifier found no `eval`, `new Function`, remote script tag, remote source map, required host permission, or non-MV3 manifest.
@@ -116,7 +116,7 @@ Source-deletion validation produced zero remaining source rows and zero normal p
 
 ## Unpacked-extension functional matrix
 
-All cases were executed in isolated Chrome profiles against the production `dist/` build.
+All cases were executed in isolated Chrome profiles against the production `dist/` build. The browser matrix was recorded for package commit `dbf8dee0635bb26026b2cae1255fc60e11d66a3d`; only release documentation and the merge commit changed between that commit and package source commit `d19ce163601e5f56647c110c32b9ab8e6c159070`. A fresh release build at the latter commit produced the same filenames, raw chunk sizes, and total unpacked size.
 
 | Case | Status | Evidence |
 |---|---|---|
@@ -160,10 +160,10 @@ All cases were executed in isolated Chrome profiles against the production `dist
 
 | Field | Value |
 |---|---|
-| Filename | `extension-v0.1.0-dbf8dee.zip` |
+| Filename | `extension-v0.1.0.zip` |
 | Compressed size | 171,209 bytes |
 | Uncompressed contents | 512,071 bytes |
-| SHA-256 | `a540b13372f4c646cc7c6f776fe309a344744bff1e1823024098ee70dd462056` |
+| SHA-256 | `4626324c6e67b7f7767cb617fd9cac2b4e90dc4acd41bfbe302819674cee8c8c` |
 
 `manifest.json` is at the ZIP root. Inspection found no tests, source maps, package-manager cache, source TypeScript, dependencies, or development-only files.
 
@@ -181,4 +181,4 @@ All seven repository constraints were checked and preserved:
 
 ## Final gate conclusion
 
-The automated gate, production dependency audit, package budgets, browser performance budgets, storage invariants, manual functional matrix, manifest review, and tested ZIP all pass for commit `dbf8dee0635bb26026b2cae1255fc60e11d66a3d` and extension version 0.1.0.
+The automated gate, production dependency audit, package budgets, browser performance budgets, storage invariants, manual functional matrix, manifest review, and tested ZIP all pass for package source commit `d19ce163601e5f56647c110c32b9ab8e6c159070` and extension version 0.1.0.
